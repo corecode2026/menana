@@ -441,11 +441,12 @@ async function createRoom(name, maxPlayers){
     viewSeconds:7, hintSeconds:20, voteSeconds:25,
     totalRounds:3, category:"عشوائي", oddCount:1, imageMode:false, soundOn:true
   };
-  await db.ref(`rooms/${code}`).set({
-    meta:{code, hostId:state.uid, createdAt:now, status:"waiting", round:0, phase:"waiting"},
-    settings,
-    players:{ [state.uid]: {name, ready:true, score:0, online:true, joinedAt:now} }
-  });
+  // تُكتب كل جزئية على حدة وبالترتيب الصحيح لأن قواعد الحماية تمنح صلاحية الكتابة
+  // على meta و settings و players كل واحدة على حدة، وليس على الغرفة كلها دفعة واحدة.
+  // يجب كتابة meta أولاً (تثبّت hostId) قبل settings، لأن قاعدة settings تتحقق من hostId.
+  await db.ref(`rooms/${code}/meta`).set({code, hostId:state.uid, createdAt:now, status:"waiting", round:0, phase:"waiting"});
+  await db.ref(`rooms/${code}/settings`).set(settings);
+  await db.ref(`rooms/${code}/players/${state.uid}`).set({name, ready:true, score:0, online:true, joinedAt:now});
   db.ref(`rooms/${code}/players/${state.uid}/online`).onDisconnect().set(false);
   state.roomCode = code; state.isHost = true; state.name = name;
   enterRoom(code);

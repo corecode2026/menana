@@ -103,6 +103,24 @@ input{font-family:var(--font-body);}
 .btn[disabled]{opacity:0.45; pointer-events:none;}
 .btn-row{display:flex; gap:12px;}
 
+/* ---- game picker (home page) ---- */
+.game-list{display:flex; flex-direction:column; gap:12px;}
+.game-card{
+  display:flex; align-items:center; gap:14px; padding:16px; border-radius:18px;
+  background:rgba(255,255,255,0.04); border:1px solid var(--border); text-align:right;
+  transition:transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.game-card:hover{border-color:rgba(255,255,255,0.2); background:rgba(255,255,255,0.06);}
+.game-card:active{transform:scale(0.98);}
+.game-card .g-icon{
+  width:52px; height:52px; border-radius:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+}
+.game-card .g-icon svg{width:26px; height:26px;}
+.game-card .g-body{flex:1; min-width:0;}
+.game-card .g-name{font-family:var(--font-display); font-weight:800; font-size:16.5px;}
+.game-card .g-tag{color:var(--text-dim); font-size:12.5px; margin-top:3px; line-height:1.5;}
+.game-count{text-align:center; color:var(--text-dim); font-size:13px; font-weight:600; margin-bottom:14px;}
+
 .stack{display:flex; flex-direction:column; gap:12px;}
 
 .field{margin-bottom:16px;}
@@ -269,6 +287,41 @@ input{font-family:var(--font-body);}
 .result-win{background:rgba(61,220,151,0.15); color:var(--success); border:1px solid rgba(61,220,151,0.35);}
 .result-lose{background:rgba(255,84,112,0.13); color:#ff8fa3; border:1px solid rgba(255,84,112,0.3);}
 
+/* ---- Musical chairs ---- */
+.eq-bars{display:flex; align-items:flex-end; gap:6px; height:70px; margin:10px 0;}
+.eq-bars .bar{width:9px; border-radius:5px; background:linear-gradient(180deg, var(--cyan), var(--violet)); animation:eqbounce 0.9s ease-in-out infinite;}
+.eq-bars .bar:nth-child(1){height:30%; animation-delay:0s;}
+.eq-bars .bar:nth-child(2){height:70%; animation-delay:.12s;}
+.eq-bars .bar:nth-child(3){height:100%; animation-delay:.24s;}
+.eq-bars .bar:nth-child(4){height:55%; animation-delay:.36s;}
+.eq-bars .bar:nth-child(5){height:80%; animation-delay:.48s;}
+@keyframes eqbounce{0%,100%{transform:scaleY(0.4);} 50%{transform:scaleY(1);}}
+.eq-bars.stopped .bar{animation:none; transform:scaleY(0.15);}
+
+.tap-btn{
+  width:220px; height:220px; border-radius:50%; border:none;
+  background:radial-gradient(circle at 35% 30%, var(--violet-2), var(--violet) 60%, #5136c9);
+  color:#fff; font-family:var(--font-display); font-weight:900; font-size:22px;
+  box-shadow:0 20px 50px rgba(124,92,255,0.4), inset 0 -8px 20px rgba(0,0,0,0.25);
+  display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.4; padding:16px;
+}
+.tap-btn:active{transform:scale(0.94);}
+.tap-btn[disabled]{opacity:0.5; background:rgba(255,255,255,0.08); box-shadow:none;}
+
+.taps-log{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:18px;}
+.tap-chip{display:flex; align-items:center; gap:6px; padding:7px 12px; border-radius:100px; background:rgba(61,220,151,0.14); border:1px solid rgba(61,220,151,0.35); color:var(--success); font-size:12.5px; font-weight:700;}
+.tap-chip.waiting{background:rgba(255,255,255,0.05); border-color:var(--border); color:var(--text-dim);}
+
+.out-card{
+  display:flex; align-items:center; gap:12px; padding:14px; border-radius:14px;
+  background:rgba(255,84,112,0.1); border:1px solid rgba(255,84,112,0.3); margin-bottom:10px;
+  animation:shakeit .5s ease;
+}
+@keyframes shakeit{0%,100%{transform:translateX(0);} 20%{transform:translateX(-6px);} 40%{transform:translateX(6px);} 60%{transform:translateX(-4px);} 80%{transform:translateX(4px);}}
+.out-card .name{font-weight:800; flex:1;}
+.eliminated-tag{color:#ff8fa3; font-size:12px; font-weight:700;}
+.spectator-note{text-align:center; color:var(--text-dim); font-size:13.5px; margin-top:14px;}
+
 /* ---- Leaderboard ---- */
 .lb-row{display:flex; align-items:center; gap:12px; padding:13px 14px; border-radius:14px; background:rgba(255,255,255,0.035); border:1px solid var(--border);}
 .lb-rank{font-family:var(--font-display); font-weight:900; font-size:16px; width:26px; color:var(--text-dim);}
@@ -323,6 +376,23 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
+
+/* =========================================================================
+   مكتبة الألعاب — كل عنصر يمثّل لعبة كاملة داخل نفس المنصة
+   ========================================================================= */
+const GAMES = [
+  {
+    id:"different", name:"مين المختلف؟", tagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة",
+    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3" stroke-dasharray="2 2"/><path d="M11 12h2"/></svg>',
+    grad:"linear-gradient(155deg, var(--violet), var(--cyan))"
+  },
+  {
+    id:"chairs", name:"الكراسي الموسيقية", tagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!",
+    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9a3 3 0 0 0 3 3h1M6 4h5M6 8h5"/><path d="M18 4v16M18 4h-4v6h4"/></svg>',
+    grad:"linear-gradient(155deg, var(--amber), var(--danger))"
+  }
+];
+function gameById(id){ return GAMES.find(g=>g.id===id) || GAMES[0]; }
 
 /* =========================================================================
    بنك الكلمات والصور (رموز تعبيرية) — مقسّمة حسب التصنيف
@@ -459,19 +529,26 @@ function ensureAuth(){
 /* =========================================================================
    إنشاء / الانضمام للغرفة
    ========================================================================= */
-async function createRoom(name, maxPlayers){
-  await ensureAuth();
-  const code = genRoomCode();
-  const now = firebase.database.ServerValue.TIMESTAMP;
-  const settings = {
+function defaultSettingsFor(gameId, maxPlayers){
+  if(gameId==="chairs"){
+    return {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, soundOn:true};
+  }
+  return {
     minPlayers:3, maxPlayers: maxPlayers||8,
     viewSeconds:7, discussionSeconds:90, voteSeconds:25,
     totalRounds:3, category:"عشوائي", oddCount:1, imageMode:false, soundOn:true
   };
+}
+
+async function createRoom(name, maxPlayers, gameId){
+  await ensureAuth();
+  const code = genRoomCode();
+  const now = firebase.database.ServerValue.TIMESTAMP;
+  const settings = defaultSettingsFor(gameId, maxPlayers);
   // تُكتب كل جزئية على حدة وبالترتيب الصحيح لأن قواعد الحماية تمنح صلاحية الكتابة
   // على meta و settings و players كل واحدة على حدة، وليس على الغرفة كلها دفعة واحدة.
   // يجب كتابة meta أولاً (تثبّت hostId) قبل settings، لأن قاعدة settings تتحقق من hostId.
-  await db.ref(`rooms/${code}/meta`).set({code, hostId:state.uid, createdAt:now, status:"waiting", round:0, phase:"waiting"});
+  await db.ref(`rooms/${code}/meta`).set({code, hostId:state.uid, gameType:gameId, createdAt:now, status:"waiting", round:0, phase:"waiting"});
   await db.ref(`rooms/${code}/settings`).set(settings);
   await db.ref(`rooms/${code}/players/${state.uid}`).set({name, ready:true, score:0, online:true, joinedAt:now});
   db.ref(`rooms/${code}/players/${state.uid}/online`).onDisconnect().set(false);
@@ -681,6 +758,120 @@ async function restartGame(){
   await db.ref(`rooms/${state.roomCode}`).update(resets);
 }
 
+/* =========================================================================
+   لعبة الكراسي الموسيقية (يُنفَّذ من طرف الهوست فقط)
+   ========================================================================= */
+async function startChairsMatch(){
+  if(!state.isHost || !state.room) return;
+  const code = state.roomCode;
+  const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
+  if(players.length < 3){ toast("تحتاج 3 لاعبين على الأقل"); return; }
+  const activePlayers = players.map(([uid])=>uid);
+
+  await db.ref(`rooms/${code}/round`).set({
+    type:"chairs", index:1,
+    activePlayers, eliminatedOrder:[], lastEliminated:[],
+    taps:{}, phase:"countdown", phaseEndAt: Date.now()+3200, matchOver:false
+  });
+  await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
+  setTimeout(()=>advanceChairsToMusic(), 3200);
+}
+
+async function advanceChairsToMusic(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  await db.ref(`rooms/${code}/round`).update({phase:"music", taps:{}});
+  await db.ref(`rooms/${code}/meta/phase`).set("music");
+}
+
+/* الهوست يضغط لحظة عشوائية يختارها بنفسه — هذا هو جوهر لعبة الكراسي */
+async function hostStopMusic(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const seconds = (state.room.settings.tapWindowMs||1500)/1000;
+  playSound('reveal');
+  await db.ref(`rooms/${code}/round`).update({phase:"tap", taps:{}, phaseEndAt: Date.now()+seconds*1000});
+  await db.ref(`rooms/${code}/meta/phase`).set("tap");
+  clearTimeout(hostStopMusic._t);
+  hostStopMusic._t = setTimeout(async ()=>{
+    const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
+    const round = snap.val();
+    if(!round || round.phase!=="tap") return;
+    finalizeChairsRound(round);
+  }, seconds*1000+150);
+}
+
+/* لاعب يضغط زر "اجلس الآن" */
+async function submitChairsTap(){
+  const round = state.room.round;
+  const code = state.roomCode;
+  if(!round || round.phase!=="tap") return;
+  if(!round.activePlayers.includes(state.uid)) return;
+  if(round.taps && round.taps[state.uid]) return;
+  await db.ref(`rooms/${code}/round/taps/${state.uid}`).set(firebase.database.ServerValue.TIMESTAMP);
+  playSound('tick');
+  if(state.isHost){
+    const snap = await db.ref(`rooms/${code}/round`).get();
+    const r = snap.val();
+    if(Object.keys(r.taps||{}).length >= r.activePlayers.length){
+      clearTimeout(hostStopMusic._t);
+      finalizeChairsRound(r);
+    }
+  }
+}
+
+async function finalizeChairsRound(round){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const settings = state.room.settings;
+  const taps = round.taps||{};
+  const active = round.activePlayers;
+  const ranked = active.map(uid=>({uid, t: (taps[uid]!==undefined && taps[uid]!==null) ? taps[uid] : Infinity}))
+    .sort((a,b)=>a.t-b.t); // الأسرع أولاً (أأمن)، من لم يضغط إطلاقاً يُعتبر الأبطأ
+
+  const eliminateCount = Math.min(settings.eliminatePerRound||1, active.length-1);
+  const eliminated = eliminateCount>0 ? ranked.slice(active.length-eliminateCount).map(x=>x.uid) : [];
+  const newActive = active.filter(uid=>!eliminated.includes(uid));
+
+  // نقاط: كل من يُقصى يحصل على نقاط بحسب عدد من بقي معه بالجولة (البقاء أطول = نقاط أكثر)
+  const scoreUpdates = {};
+  const players = state.room.players;
+  eliminated.forEach(uid=>{
+    scoreUpdates[`players/${uid}/score`] = (players[uid].score||0) + active.length*10;
+  });
+  if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
+
+  const matchOver = newActive.length<=1;
+  await db.ref(`rooms/${code}/round`).update({
+    phase:"result", lastEliminated:eliminated, activePlayers:newActive,
+    eliminatedOrder:(round.eliminatedOrder||[]).concat(eliminated), matchOver
+  });
+  await db.ref(`rooms/${code}/meta/phase`).set("result");
+}
+
+async function nextChairsRound(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const round = state.room.round;
+  await db.ref(`rooms/${code}/round`).update({
+    index:(round.index||1)+1, phase:"countdown", phaseEndAt: Date.now()+3200, taps:{}, lastEliminated:[]
+  });
+  await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:(round.index||1)+1});
+  setTimeout(()=>advanceChairsToMusic(), 3200);
+}
+
+async function chairsFinishMatch(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const round = state.room.round;
+  const winnerUid = round.activePlayers[0];
+  if(winnerUid){
+    const players = state.room.players;
+    await db.ref(`rooms/${code}/players/${winnerUid}/score`).set((players[winnerUid].score||0) + Object.keys(players).length*15);
+  }
+  await db.ref(`rooms/${code}/meta`).update({status:"finished", phase:"finished"});
+}
+
 /* الهوست يمكنه إنهاء وقت النقاش مبكراً والانتقال مباشرة للتصويت */
 async function skipDiscussion(){
   if(!state.isHost) return;
@@ -725,8 +916,38 @@ function renderHome(){
     <div class="card">
       <div class="brand">
         <div class="brand-mark">${svgLogo()}</div>
-        <h1>مين المختلف؟</h1>
-        <p>لعبة الذكاء والخداع — العب مع أصدقائك برابط واحد</p>
+        <h1>منصّة الألعاب الجماعية</h1>
+        <p>اختر لعبة والعبها مع أصدقائك برابط واحد</p>
+      </div>
+      <div class="game-count">🎮 عدد الألعاب المتاحة: ${GAMES.length}</div>
+      <div class="game-list">
+        ${GAMES.map(g=>`
+          <button class="game-card" data-g="${g.id}">
+            <div class="g-icon" style="background:${g.grad}">${g.iconSvg}</div>
+            <div class="g-body">
+              <div class="g-name">${escapeHTML(g.name)}</div>
+              <div class="g-tag">${escapeHTML(g.tagline)}</div>
+            </div>
+            ${svgIcon('chevron-left')}
+          </button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.querySelectorAll('.game-card').forEach(btn=>{
+    btn.onclick = ()=> renderGamePicked(btn.dataset.g);
+  });
+}
+
+function renderGamePicked(gameId){
+  const g = gameById(gameId);
+  document.getElementById('app').innerHTML = `
+  <button class="back-btn" id="back">${svgIcon('back')}</button>
+  <div class="wrap">
+    <div class="card">
+      <div class="brand">
+        <div class="brand-mark" style="background:${g.grad}">${g.iconSvg}</div>
+        <h1>${escapeHTML(g.name)}</h1>
+        <p>${escapeHTML(g.tagline)}</p>
       </div>
       <div class="stack">
         <button class="btn btn-primary" id="go-create">${svgIcon('plus')}إنشاء غرفة</button>
@@ -734,11 +955,12 @@ function renderHome(){
       </div>
     </div>
   </div>`;
-  document.getElementById('go-create').onclick = renderCreate;
-  document.getElementById('go-join').onclick = renderJoin;
+  document.getElementById('back').onclick = renderHome;
+  document.getElementById('go-create').onclick = ()=> renderCreate(gameId);
+  document.getElementById('go-join').onclick = ()=> renderJoin(gameId);
 }
 
-function renderCreate(){
+function renderCreate(gameId){
   let maxpValue = 8;
   document.getElementById('app').innerHTML = `
   <button class="back-btn" id="back">${svgIcon('back')}</button>
@@ -756,17 +978,17 @@ function renderCreate(){
       <button class="btn btn-primary" id="submit">${svgIcon('plus')}إنشاء الغرفة</button>
     </div>
   </div>`;
-  document.getElementById('back').onclick = renderHome;
+  document.getElementById('back').onclick = ()=> renderGamePicked(gameId);
   wireDropdown('maxp-dd', v=>{ maxpValue = parseInt(v,10); });
   document.getElementById('submit').onclick = async ()=>{
     const name = sanitizeInput(document.getElementById('name').value, 16);
     if(!name){ toast("اكتب اسمك أولاً"); return; }
     const btn = document.getElementById('submit'); btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
-    await createRoom(name, maxpValue);
+    await createRoom(name, maxpValue, gameId);
   };
 }
 
-function renderJoin(){
+function renderJoin(gameId){
   document.getElementById('app').innerHTML = `
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
@@ -783,7 +1005,7 @@ function renderJoin(){
       <button class="btn btn-primary" id="submit">${svgIcon('enter')}دخول</button>
     </div>
   </div>`;
-  document.getElementById('back').onclick = renderHome;
+  document.getElementById('back').onclick = gameId ? (()=> renderGamePicked(gameId)) : renderHome;
   document.getElementById('submit').onclick = async ()=>{
     const name = sanitizeInput(document.getElementById('name').value, 16);
     const code = document.getElementById('code').value.trim();
@@ -800,33 +1022,16 @@ function renderWaitingRoom(){
   const list = Object.entries(players).filter(([uid,p])=>p.online!==false)
     .sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
   const isHost = state.isHost;
+  const gameType = meta.gameType||"different";
+  const g = gameById(gameType);
 
-  document.getElementById('app').innerHTML = `
-  <button class="back-btn" id="leave">${svgIcon('back')}</button>
-  <div class="wrap">
-    <div class="card card-wide">
-      <div class="room-code-banner">
-        <div class="label">كود الغرفة — شارك مع أصدقائك</div>
-        <div class="code">${meta.code}</div>
-        <div class="share-row">
-          <button class="btn btn-secondary btn-sm" id="copy-code">${svgIcon('copy')}نسخ الكود</button>
-          <button class="btn btn-secondary btn-sm" id="copy-link">${svgIcon('link')}نسخ الرابط</button>
-        </div>
-      </div>
-
-      <div class="section-title">اللاعبون (${list.length}/${settings.maxPlayers})</div>
-      <div class="player-list">
-        ${list.map(([uid,p])=>`
-          <div class="player-card">
-            <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
-            <div class="name">${escapeHTML(p.name)}</div>
-            ${uid===meta.hostId?'<span class="badge badge-host">الهوست</span>':'<span class="badge badge-ready">جاهز</span>'}
-          </div>`).join('')}
-      </div>
-
-      ${isHost ? `
-      <div class="section-title">إعدادات الجولة</div>
-      <div class="stack">
+  const settingsHTML = gameType==="chairs" ? `
+        <div class="field">
+          <label>عدد المُقصين في كل جولة</label>
+          <div class="segmented" id="set-eliminate">
+            ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
+          </div>
+        </div>` : `
         <div class="field">
           <label>التصنيف</label>
           ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي"}, ...ALL_CATEGORIES.map(c=>({v:c, label:c}))], settings.category)}
@@ -854,7 +1059,35 @@ function renderWaitingRoom(){
           <div class="segmented" id="set-odd">
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.oddCount===n?'active':''}">${n}</button>`).join('')}
           </div>
+        </div>`;
+
+  document.getElementById('app').innerHTML = `
+  <button class="back-btn" id="leave">${svgIcon('back')}</button>
+  <div class="wrap">
+    <div class="card card-wide">
+      <div class="room-code-banner">
+        <div class="label">${escapeHTML(g.name)} — شارك الكود مع أصدقائك</div>
+        <div class="code">${meta.code}</div>
+        <div class="share-row">
+          <button class="btn btn-secondary btn-sm" id="copy-code">${svgIcon('copy')}نسخ الكود</button>
+          <button class="btn btn-secondary btn-sm" id="copy-link">${svgIcon('link')}نسخ الرابط</button>
         </div>
+      </div>
+
+      <div class="section-title">اللاعبون (${list.length}/${settings.maxPlayers})</div>
+      <div class="player-list">
+        ${list.map(([uid,p])=>`
+          <div class="player-card">
+            <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+            <div class="name">${escapeHTML(p.name)}</div>
+            ${uid===meta.hostId?'<span class="badge badge-host">الهوست</span>':'<span class="badge badge-ready">جاهز</span>'}
+          </div>`).join('')}
+      </div>
+
+      ${isHost ? `
+      <div class="section-title">إعدادات الجولة</div>
+      <div class="stack">
+        ${settingsHTML}
       </div>
       <button class="btn btn-primary" id="start-btn" style="margin-top:22px;" ${list.length<3?'disabled':''}>
         ${svgIcon('play')}${list.length<3?'بانتظار لاعبين (3 على الأقل)':'بدء اللعبة'}
@@ -869,13 +1102,17 @@ function renderWaitingRoom(){
   document.getElementById('copy-link').onclick = ()=>{ navigator.clipboard.writeText(location.href.split('?')[0]+`?room=${meta.code}`); toast("تم نسخ الرابط"); };
 
   if(isHost){
-    wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
-    document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
-    document.getElementById('set-view').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/viewSeconds`).set(parseInt(e.target.dataset.v)); };
-    document.getElementById('set-discussion').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/discussionSeconds`).set(parseInt(e.target.dataset.v)); };
-    document.getElementById('set-odd').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/oddCount`).set(parseInt(e.target.dataset.v)); };
+    if(gameType==="chairs"){
+      document.getElementById('set-eliminate').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/eliminatePerRound`).set(parseInt(e.target.dataset.v)); };
+    } else {
+      wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
+      document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
+      document.getElementById('set-view').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/viewSeconds`).set(parseInt(e.target.dataset.v)); };
+      document.getElementById('set-discussion').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/discussionSeconds`).set(parseInt(e.target.dataset.v)); };
+      document.getElementById('set-odd').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/oddCount`).set(parseInt(e.target.dataset.v)); };
+    }
     const startBtn = document.getElementById('start-btn');
-    if(startBtn) startBtn.onclick = startRound;
+    if(startBtn) startBtn.onclick = gameType==="chairs" ? startChairsMatch : startRound;
   }
 }
 
@@ -883,6 +1120,15 @@ function renderPlayingPhase(){
   const round = state.room.round;
   if(!round) return;
   clearTimer();
+  const gameType = state.room.meta.gameType||"different";
+
+  if(gameType==="chairs"){
+    if(round.phase==="countdown") renderCountdown(round);
+    else if(round.phase==="music") renderChairsMusic(round);
+    else if(round.phase==="tap") renderChairsTap(round);
+    else if(round.phase==="result") renderChairsResult(round);
+    return;
+  }
 
   if(round.phase==="countdown") renderCountdown(round);
   else if(round.phase==="reveal") renderReveal(round);
@@ -1033,6 +1279,89 @@ function renderResults(round){
   if(state.isHost) document.getElementById('next-btn').onclick = nextRoundOrFinish;
 }
 
+/* ---- الكراسي الموسيقية: شاشات المراحل ---- */
+function renderChairsMusic(round){
+  const players = round.activePlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
+    <div class="phase-eyebrow">الجولة ${round.index}</div>
+    <div class="eq-bars">${'<div class="bar"></div>'.repeat(5)}</div>
+    <h2 style="font-size:20px;">الموسيقى تشتغل 🎵</h2>
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}استعدوا للجلوس بسرعة لحظة ما تتوقف</div>
+
+    <div class="section-title" style="width:100%;">اللاعبون المتبقون (${players.length})</div>
+    <div class="player-list" style="width:100%;">
+      ${players.map(([uid,p])=>`
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+          <div class="name">${escapeHTML(p.name)}</div>
+        </div>`).join('')}
+    </div>
+
+    ${state.isHost ? `<button class="btn btn-danger" id="stop-music" style="margin-top:20px; font-size:18px; padding:18px;">⏹ قف الموسيقى الآن!</button>`
+      : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}الهوست يتحكم بلحظة التوقف…</div>`}
+    ${!round.activePlayers.includes(state.uid) ? `<div class="spectator-note">أنت مُقصى من هذه الجولة — تابع اللعبة كمشاهد 👀</div>` : ''}
+  </div></div>`;
+  if(state.isHost) document.getElementById('stop-music').onclick = hostStopMusic;
+}
+
+function renderChairsTap(round){
+  const players = round.activePlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
+  const taps = round.taps||{};
+  const amIActive = round.activePlayers.includes(state.uid);
+  const iTapped = !!taps[state.uid];
+
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
+    <h2 style="font-size:24px;">🪑 اجلس بسرعة!</h2>
+    ${amIActive ? `
+      <button class="tap-btn" id="tap-btn" ${iTapped?'disabled':''}>${iTapped?'تم! ✅':'اضغط الآن'}</button>
+    ` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}أنت خارج هذه الجولة — راقب اللاعبين</div>`}
+
+    <div class="taps-log">
+      ${players.map(([uid,p])=>`
+        <div class="tap-chip ${taps[uid]?'':'waiting'}">${taps[uid]?svgIcon('check'):''}${escapeHTML(p.name)}</div>`).join('')}
+    </div>
+  </div></div>`;
+
+  if(amIActive && !iTapped){
+    document.getElementById('tap-btn').onclick = submitChairsTap;
+  }
+}
+
+function renderChairsResult(round){
+  const players = state.room.players;
+  const eliminated = round.lastEliminated||[];
+  const remaining = round.activePlayers||[];
+
+  if(eliminated.length) playSound('lose');
+
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
+    <div class="phase-eyebrow">نتيجة الجولة ${round.index}</div>
+    ${eliminated.length ? `
+      <div style="width:100%;">
+        ${eliminated.map(uid=>`
+          <div class="out-card">
+            <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(players[uid]?players[uid].name:''))}</div>
+            <div class="name">${escapeHTML(players[uid]?players[uid].name:'')}</div>
+            <div class="eliminated-tag">أُقصي 🚫</div>
+          </div>`).join('')}
+      </div>` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}لم يُقصَ أحد هذه الجولة</div>`}
+
+    <div class="section-title" style="width:100%;">${round.matchOver?'الفائز':'اللاعبون المتبقون'} (${remaining.length})</div>
+    <div class="player-list" style="width:100%;">
+      ${remaining.map(uid=>`
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(players[uid]?players[uid].name:''))}</div>
+          <div class="name">${escapeHTML(players[uid]?players[uid].name:'')}</div>
+        </div>`).join('')}
+    </div>
+
+    ${state.isHost ? `<button class="btn btn-primary" id="chairs-next" style="margin-top:20px;">${svgIcon('play')}${round.matchOver?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
+      : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}بانتظار الهوست للمتابعة…</div>`}
+  </div></div>`;
+
+  if(state.isHost) document.getElementById('chairs-next').onclick = round.matchOver ? chairsFinishMatch : nextChairsRound;
+}
+
 function renderFinal(){
   const players = Object.entries(state.room.players).sort((a,b)=>(b[1].score||0)-(a[1].score||0));
   launchConfetti();
@@ -1104,7 +1433,8 @@ function svgIcon(name){
     info:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>',
     send:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
     check:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
-    chevron:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'
+    chevron:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    'chevron-left':'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
   };
   return icons[name]||'';
 }

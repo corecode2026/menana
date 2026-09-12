@@ -116,6 +116,28 @@ input{font-family:var(--font-body);}
 .field input::placeholder{color:#5c6178;}
 .code-input{letter-spacing:6px; text-align:center; font-family:var(--font-display); font-weight:800; text-transform:uppercase;}
 
+/* ---- custom dropdown (replaces native <select>, which can't be dark-themed) ---- */
+.dd{position:relative;}
+.dd-trigger{
+  width:100%; padding:14px 16px; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  color:var(--text); font-size:16px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  transition:border-color .15s ease, background .15s ease;
+}
+.dd.open .dd-trigger, .dd-trigger:focus{border-color:var(--violet-2); background:rgba(255,255,255,0.08); outline:none;}
+.dd-trigger .icon{transition:transform .18s ease; color:var(--text-dim); flex-shrink:0;}
+.dd.open .dd-trigger .icon{transform:rotate(180deg);}
+.dd-menu{
+  position:absolute; top:calc(100% + 8px); left:0; right:0; z-index:30;
+  background:#12141c; border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.5); overflow:hidden auto; max-height:280px;
+  display:none;
+}
+.dd.open .dd-menu{display:block;}
+.dd-item{padding:13px 16px; font-size:15px; color:var(--text-dim); transition:background .12s ease, color .12s ease;}
+.dd-item:not(:first-child){border-top:1px solid rgba(255,255,255,0.05);}
+.dd-item:hover{background:rgba(124,92,255,0.16); color:var(--text);}
+.dd-item.selected{background:rgba(124,92,255,0.2); color:#d6ccff; font-weight:700;}
+
 .back-btn{
   position:fixed; top:18px; inset-inline-start:18px; z-index:5;
   width:42px; height:42px; border-radius:12px; border:1px solid var(--border);
@@ -717,6 +739,7 @@ function renderHome(){
 }
 
 function renderCreate(){
+  let maxpValue = 8;
   document.getElementById('app').innerHTML = `
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
@@ -728,20 +751,18 @@ function renderCreate(){
       </div>
       <div class="field">
         <label>عدد اللاعبين الأقصى</label>
-        <select id="maxp">
-          ${[4,5,6,8,10,12].map(n=>`<option value="${n}" ${n===8?'selected':''}>${n} لاعبين</option>`).join('')}
-        </select>
+        ${ddHTML('maxp-dd', [4,5,6,8,10,12].map(n=>({v:n, label:`${n} لاعبين`})), 8)}
       </div>
       <button class="btn btn-primary" id="submit">${svgIcon('plus')}إنشاء الغرفة</button>
     </div>
   </div>`;
   document.getElementById('back').onclick = renderHome;
+  wireDropdown('maxp-dd', v=>{ maxpValue = parseInt(v,10); });
   document.getElementById('submit').onclick = async ()=>{
     const name = sanitizeInput(document.getElementById('name').value, 16);
     if(!name){ toast("اكتب اسمك أولاً"); return; }
-    const maxp = parseInt(document.getElementById('maxp').value,10);
     const btn = document.getElementById('submit'); btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
-    await createRoom(name, maxp);
+    await createRoom(name, maxpValue);
   };
 }
 
@@ -808,10 +829,7 @@ function renderWaitingRoom(){
       <div class="stack">
         <div class="field">
           <label>التصنيف</label>
-          <select id="set-category">
-            <option value="عشوائي">🎲 عشوائي</option>
-            ${ALL_CATEGORIES.map(c=>`<option value="${c}" ${settings.category===c?'selected':''}>${c}</option>`).join('')}
-          </select>
+          ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي"}, ...ALL_CATEGORIES.map(c=>({v:c, label:c}))], settings.category)}
         </div>
         <div class="field">
           <label>عدد الجولات</label>
@@ -851,7 +869,7 @@ function renderWaitingRoom(){
   document.getElementById('copy-link').onclick = ()=>{ navigator.clipboard.writeText(location.href.split('?')[0]+`?room=${meta.code}`); toast("تم نسخ الرابط"); };
 
   if(isHost){
-    document.getElementById('set-category').onchange = e=> db.ref(`rooms/${state.roomCode}/settings/category`).set(e.target.value);
+    wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
     document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
     document.getElementById('set-view').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/viewSeconds`).set(parseInt(e.target.dataset.v)); };
     document.getElementById('set-discussion').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/discussionSeconds`).set(parseInt(e.target.dataset.v)); };
@@ -1085,7 +1103,8 @@ function svgIcon(name){
     play:'<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
     info:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>',
     send:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
-    check:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
+    check:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    chevron:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'
   };
   return icons[name]||'';
 }
@@ -1094,6 +1113,39 @@ function svgLogo(){
     <circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3" stroke-dasharray="2 2"/><path d="M11 12h2"/>
   </svg>`;
 }
+
+/* ---- custom dropdown: builds markup, then wireDropdown() attaches behavior after insertion ---- */
+function ddHTML(id, options, selectedValue){
+  const sel = options.find(o=>String(o.v)===String(selectedValue)) || options[0];
+  return `<div class="dd" id="${id}">
+    <button type="button" class="dd-trigger"><span class="dd-label">${escapeHTML(sel?sel.label:'')}</span>${svgIcon('chevron')}</button>
+    <div class="dd-menu">
+      ${options.map(o=>`<div class="dd-item ${String(o.v)===String(selectedValue)?'selected':''}" data-v="${escapeHTML(String(o.v))}">${escapeHTML(o.label)}</div>`).join('')}
+    </div>
+  </div>`;
+}
+function wireDropdown(id, onSelect){
+  const dd = document.getElementById(id);
+  if(!dd) return;
+  const trigger = dd.querySelector('.dd-trigger');
+  const label = dd.querySelector('.dd-label');
+  trigger.onclick = e=>{
+    e.stopPropagation();
+    document.querySelectorAll('.dd.open').forEach(o=>{ if(o!==dd) o.classList.remove('open'); });
+    dd.classList.toggle('open');
+  };
+  dd.querySelectorAll('.dd-item').forEach(item=>{
+    item.onclick = e=>{
+      e.stopPropagation();
+      dd.querySelectorAll('.dd-item').forEach(i=>i.classList.remove('selected'));
+      item.classList.add('selected');
+      label.textContent = item.textContent;
+      dd.classList.remove('open');
+      onSelect(item.dataset.v);
+    };
+  });
+}
+document.addEventListener('click', ()=>{ document.querySelectorAll('.dd.open').forEach(d=>d.classList.remove('open')); });
 
 /* =========================================================================
    خلفية جسيمات بسيطة (particle background)

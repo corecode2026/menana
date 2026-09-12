@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>لوحة التحكم — مين المختلف؟</title>
+<title>لوحة التحكم — منصّة الألعاب</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,26 +22,25 @@
 }
 *{box-sizing:border-box; margin:0; padding:0;}
 body{
-  background:radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.16), transparent 60%), var(--bg-0);
+  background:radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.12), transparent 60%), var(--bg-0);
   color:var(--text); font-family:var(--font-body); min-height:100vh; padding:24px 16px 60px;
 }
 h1,h2,h3{font-family:var(--font-display);}
-.wrap{max-width:720px; margin:0 auto;}
-.card{background:var(--panel); border:1px solid var(--border); border-radius:20px; padding:24px; margin-bottom:20px; backdrop-filter:blur(14px);}
-.header{text-align:center; margin-bottom:28px;}
-.header h1{font-size:24px; font-weight:900;}
-.header p{color:var(--text-dim); font-size:13.5px; margin-top:6px;}
+.wrap{max-width:760px; margin:0 auto;}
+.card{background:var(--panel); border:1px solid var(--border); border-radius:20px; padding:22px; margin-bottom:18px; backdrop-filter:blur(14px);}
+.header{text-align:center; margin-bottom:24px;}
+.header h1{font-size:23px; font-weight:900;}
+.header p{color:var(--text-dim); font-size:13px; margin-top:6px;}
 .section-title{font-size:14px; font-weight:800; margin-bottom:14px; display:flex; align-items:center; gap:8px; color:var(--violet-2);}
 
 input, select{
   font-family:var(--font-body); width:100%; padding:12px 14px; border-radius:10px;
   background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text); font-size:15px; outline:none;
 }
-input:focus{border-color:var(--violet-2);}
+input:focus, select:focus{border-color:var(--violet-2);}
 label{display:block; font-size:12.5px; color:var(--text-dim); margin-bottom:6px; font-weight:600;}
 .field{margin-bottom:14px;}
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-.row-emoji{display:grid; grid-template-columns:1fr 70px 40px; gap:8px; align-items:end;}
 
 button{font-family:var(--font-body); cursor:pointer; border:none;}
 .btn{padding:11px 18px; border-radius:10px; font-weight:700; font-size:14px; transition:filter .15s ease, transform .1s ease;}
@@ -50,12 +49,17 @@ button{font-family:var(--font-body); cursor:pointer; border:none;}
 .btn-secondary{background:var(--panel-strong); color:var(--text); border:1px solid var(--border);}
 .btn-danger{background:rgba(255,84,112,0.14); color:#ff8fa3; border:1px solid rgba(255,84,112,0.3);}
 .btn-sm{padding:8px 12px; font-size:12.5px;}
-.btn-icon{width:40px; height:40px; border-radius:10px; background:rgba(255,84,112,0.12); color:#ff8fa3; display:flex; align-items:center; justify-content:center; font-size:16px;}
+.btn-icon{width:40px; height:40px; border-radius:10px; background:rgba(255,84,112,0.12); color:#ff8fa3; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;}
 
-.game-row{border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; background:rgba(255,255,255,0.03);}
-.game-row h3{font-size:15px; margin-bottom:12px;}
+/* ---- tabs ---- */
+.tabs{display:flex; gap:8px; margin-bottom:20px; overflow-x:auto; padding-bottom:2px;}
+.tabs::-webkit-scrollbar{height:4px;}
+.tab-btn{padding:11px 18px; border-radius:11px; background:var(--panel); border:1px solid var(--border); color:var(--text-dim); font-weight:800; font-size:13.5px; white-space:nowrap; flex-shrink:0;}
+.tab-btn.active{background:var(--violet); color:#fff; border-color:var(--violet);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
 
-.cat-block{border:1px solid var(--border); border-radius:16px; margin-bottom:16px; overflow:hidden;}
+.cat-block{border:1px solid var(--border); border-radius:16px; margin-bottom:14px; overflow:hidden;}
 .cat-head{display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:rgba(255,255,255,0.04); cursor:pointer;}
 .cat-head .name{font-weight:800; font-size:15px;}
 .cat-head .count{color:var(--text-dim); font-size:12.5px; margin-inline-start:8px;}
@@ -68,13 +72,22 @@ button{font-family:var(--font-body); cursor:pointer; border:none;}
 .add-word-row{display:flex; gap:8px; margin-top:12px;}
 .add-word-row input{flex:1;}
 .add-word-row input.emoji-in{max-width:64px; text-align:center; flex:none;}
+.new-cat-row{display:flex; gap:8px;}
+.new-cat-row input{flex:1;}
+
+.img-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; margin-top:16px;}
+.img-tile{position:relative; border-radius:12px; overflow:hidden; border:1px solid var(--border); aspect-ratio:1; background:rgba(255,255,255,0.03);}
+.img-tile img{width:100%; height:100%; object-fit:cover; display:block;}
+.img-tile .img-del{position:absolute; top:5px; left:5px; width:24px; height:24px; border-radius:7px; background:rgba(0,0,0,0.65); color:#ff8fa3; display:flex; align-items:center; justify-content:center; font-size:12px;}
+.img-tile .img-label{position:absolute; bottom:0; inset-inline:0; background:rgba(0,0,0,0.65); color:#fff; font-size:10px; padding:4px 6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.upload-status{font-size:12.5px; color:var(--text-dim); margin-top:8px; min-height:16px;}
+.divider{height:1px; background:var(--border); margin:18px 0;}
 
 .gate{display:flex; align-items:center; justify-content:center; min-height:70vh; flex-direction:column; gap:16px;}
 .gate .card{width:100%; max-width:360px; text-align:center;}
 .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(120%); background:#12141c; border:1px solid var(--border); padding:12px 18px; border-radius:10px; font-size:13.5px; transition:transform .3s ease; z-index:50;}
 .toast.show{transform:translateX(-50%) translateY(0);}
-.new-cat-row{display:flex; gap:8px;}
-.new-cat-row input{flex:1;}
+.hint{color:var(--text-dim); font-size:12.5px; line-height:1.7; margin-bottom:14px;}
 </style>
 </head>
 <body>
@@ -96,10 +109,7 @@ const firebaseConfig = {
   appId: "1:116029089749:web:29c271067f92643ffb3f5c"
 };
 
-/* ⚠️ غيّر هذه الكلمة قبل نشر الموقع — هذا فقط باب دخول بسيط لواجهة اللوحة
-   (لأن أي شخص يفتح لوحة تحكم من نوع "صفحة واحدة" دون خادم حقيقي يمكنه نظرياً
-   الوصول لقاعدة البيانات مباشرة إن عرف إعدادات Firebase العامة أصلاً — هذا
-   ينطبق على أي موقع من نفس النوع، وليس خاصاً بهذه اللوحة). */
+/* ⚠️ غيّر هذه الكلمة قبل نشر الموقع — هذا فقط باب دخول بسيط لواجهة اللوحة */
 const ADMIN_PASSWORD = "admin123";
 
 firebase.initializeApp(firebaseConfig);
@@ -107,9 +117,9 @@ const db = firebase.database();
 const auth = firebase.auth();
 
 const GAMES_META = [
-  {id:"different", defaultName:"مين المختلف؟", defaultTagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة"},
-  {id:"chairs", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
-  {id:"guesswho", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"}
+  {id:"different", tab:"مين المختلف؟", defaultName:"مين المختلف؟", defaultTagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة"},
+  {id:"chairs", tab:"الكراسي الموسيقية", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
+  {id:"guesswho", tab:"شو معي؟", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"}
 ];
 
 function escapeHTML(str){ return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
@@ -147,33 +157,96 @@ function renderGate(){
   document.getElementById('pw').addEventListener('keydown', e=>{ if(e.key==='Enter') tryEnter(); });
 }
 
+/* =========================================================================
+   لوحة التحكم الرئيسية — منظّمة بتبويبات: لعبة لكل تبويب + بنك الكلمات
+   ========================================================================= */
 async function renderDashboard(){
   document.getElementById('app').innerHTML = `
     <div class="header">
-      <h1>لوحة تحكم اللعبة</h1>
-      <p>عدّل أسماء الألعاب وبنك الكلمات — التغييرات تنعكس مباشرة في اللعبة</p>
+      <h1>لوحة تحكم منصّة الألعاب</h1>
+      <p>تحكم بكل لعبة من تبويبها الخاص — التغييرات تنعكس مباشرة باللعبة</p>
     </div>
 
-    <div class="card">
-      <div class="section-title">🎮 أسماء الألعاب</div>
-      <div id="games-area">جارِ التحميل…</div>
+    <div class="tabs">
+      ${GAMES_META.map((g,i)=>`<button class="tab-btn ${i===0?'active':''}" data-tab="${g.id}">${escapeHTML(g.tab)}</button>`).join('')}
+      <button class="tab-btn" data-tab="wordbank">📚 بنك الكلمات</button>
     </div>
 
-    <div class="card">
-      <div class="section-title">📚 بنك الكلمات — "مين المختلف؟"</div>
-      <div id="wordbank-area">جارِ التحميل…</div>
-      <div class="new-cat-row" style="margin-top:16px;">
-        <input id="new-cat-name" placeholder="اسم تصنيف جديد، مثال: مسلسلات">
-        <button class="btn btn-secondary" id="add-cat">+ إضافة تصنيف</button>
+    <!-- تبويب: مين المختلف؟ -->
+    <div class="tab-panel active" id="tab-different">
+      <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-different"></div></div>
+      <div class="card">
+        <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
+        <div class="field"><label>التصنيف الافتراضي</label><select id="def-different-category"><option>...</option></select></div>
+        <div class="row2">
+          <div class="field"><label>عدد الجولات</label><input id="def-different-rounds" type="number" min="1" max="20"></div>
+          <div class="field"><label>عدد "المختلفين"</label><input id="def-different-odd" type="number" min="1" max="3"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>مدة مشاهدة الكلمة (ثانية)</label><input id="def-different-view" type="number" min="3" max="30"></div>
+          <div class="field"><label>مدة النقاش (ثانية)</label><input id="def-different-discussion" type="number" min="30" max="600"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-def-different">حفظ الإعدادات الافتراضية</button>
+      </div>
+    </div>
+
+    <!-- تبويب: الكراسي الموسيقية -->
+    <div class="tab-panel" id="tab-chairs">
+      <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-chairs"></div></div>
+      <div class="card">
+        <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
+        <div class="field"><label>عدد المُقصين في كل جولة</label><input id="def-chairs-eliminate" type="number" min="1" max="3"></div>
+        <button class="btn btn-primary btn-sm" id="save-def-chairs">حفظ الإعدادات الافتراضية</button>
+      </div>
+    </div>
+
+    <!-- تبويب: شو معي؟ -->
+    <div class="tab-panel" id="tab-guesswho">
+      <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-guesswho"></div></div>
+      <div class="card">
+        <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
+        <div class="row2">
+          <div class="field"><label>عدد الجولات</label><input id="def-guesswho-rounds" type="number" min="1" max="20"></div>
+          <div class="field"><label>الوقت الأقصى للجولة (ثانية، 0 = بلا حد)</label><input id="def-guesswho-roundtime" type="number" min="0" max="900"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-def-guesswho">حفظ الإعدادات الافتراضية</button>
+      </div>
+      <div class="card">
+        <div class="section-title">🖼️ بنك الصور</div>
+        <p class="hint">هذه الصور هي اللي بتنعرض للاعبين بدل الإيموجي بلعبة "شو معي؟". إذا ما ضفت أي صورة، رح تستخدم اللعبة كلمات وإيموجي من بنك الكلمات العام تلقائياً.<br><br>
+        ارفع الصورة على أي موقع استضافة صور مجاني (مثل <a href="https://imgur.com/upload" target="_blank" style="color:var(--violet-2);">imgur.com</a> أو مستودع GitHub تبعك) وانسخ رابطها المباشر هون — هيك ما تحتاج تفعّل خدمات مدفوعة من Firebase.</p>
+        <div class="field"><label>رابط الصورة المباشر (يبدأ بـ https://)</label><input id="img-url" placeholder="https://i.imgur.com/xxxxx.jpg"></div>
+        <div class="field"><label>وصف مختصر (اختياري)</label><input id="img-label" placeholder="مثال: قطة"></div>
+        <button class="btn btn-primary btn-sm" id="img-add">+ إضافة الصورة</button>
+        <div class="upload-status" id="img-upload-status"></div>
+        <div class="img-grid" id="guess-images-grid">جارِ التحميل…</div>
+      </div>
+    </div>
+
+    <!-- تبويب: بنك الكلمات -->
+    <div class="tab-panel" id="tab-wordbank">
+      <div class="card">
+        <div class="section-title">📚 بنك الكلمات — "مين المختلف؟"</div>
+        <div id="wordbank-area">جارِ التحميل…</div>
+        <div class="new-cat-row" style="margin-top:16px;">
+          <input id="new-cat-name" placeholder="اسم تصنيف جديد، مثال: مسلسلات">
+          <button class="btn btn-secondary" id="add-cat">+ إضافة تصنيف</button>
+        </div>
       </div>
     </div>
 
     <div style="text-align:center;"><button class="btn btn-danger btn-sm" id="logout">تسجيل الخروج</button></div>
   `;
-  document.getElementById('logout').onclick = ()=>{ sessionStorage.removeItem('adminOk'); renderGate(); };
 
-  await loadGames();
-  await loadWordBank();
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    };
+  });
+  document.getElementById('logout').onclick = ()=>{ sessionStorage.removeItem('adminOk'); renderGate(); };
 
   document.getElementById('add-cat').onclick = async ()=>{
     const name = document.getElementById('new-cat-name').value.trim();
@@ -186,17 +259,22 @@ async function renderDashboard(){
     toast("تمت إضافة التصنيف");
     loadWordBank();
   };
+
+  await loadGames();
+  await loadWordBank();   // تملأ أيضاً قائمة التصنيفات بإعدادات "مين المختلف؟" الافتراضية
+  await loadAllDefaults();
+  await loadGuessImages();
+  wireImageAdd();
 }
 
+/* ---- الاسم والوصف لكل لعبة ---- */
 async function loadGames(){
   const snap = await db.ref('gameData/games').get();
   const overrides = snap.exists() ? snap.val() : {};
-  const area = document.getElementById('games-area');
-  area.innerHTML = GAMES_META.map(g=>{
+  GAMES_META.forEach(g=>{
     const cur = overrides[g.id]||{};
-    return `
-    <div class="game-row">
-      <h3>${escapeHTML(g.defaultName)}</h3>
+    const container = document.getElementById(`name-card-${g.id}`);
+    container.innerHTML = `
       <div class="field">
         <label>اسم اللعبة المعروض</label>
         <input id="name-${g.id}" value="${escapeHTML(cur.name||g.defaultName)}">
@@ -205,26 +283,78 @@ async function loadGames(){
         <label>الوصف القصير</label>
         <input id="tag-${g.id}" value="${escapeHTML(cur.tagline||g.defaultTagline)}">
       </div>
-      <button class="btn btn-primary btn-sm" data-g="${g.id}">حفظ</button>
-    </div>`;
-  }).join('');
-  area.querySelectorAll('button[data-g]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.dataset.g;
-      const name = document.getElementById(`name-${id}`).value.trim();
-      const tagline = document.getElementById(`tag-${id}`).value.trim();
+      <button class="btn btn-primary btn-sm" id="save-name-${g.id}">حفظ</button>`;
+    document.getElementById(`save-name-${g.id}`).onclick = async ()=>{
+      const name = document.getElementById(`name-${g.id}`).value.trim();
+      const tagline = document.getElementById(`tag-${g.id}`).value.trim();
       if(!name || !tagline){ toast("لا تترك الحقول فارغة"); return; }
-      await db.ref(`gameData/games/${id}`).set({name, tagline});
+      await db.ref(`gameData/games/${g.id}`).set({name, tagline});
       toast("تم الحفظ ✅");
     };
   });
 }
 
+/* ---- الإعدادات الافتراضية لكل لعبة ---- */
+async function loadAllDefaults(){
+  const snap = await db.ref('gameData/defaults').get();
+  const d = snap.exists() ? snap.val() : {};
+
+  const diff = d.different||{};
+  document.getElementById('def-different-rounds').value = diff.totalRounds ?? 3;
+  document.getElementById('def-different-odd').value = diff.oddCount ?? 1;
+  document.getElementById('def-different-view').value = diff.viewSeconds ?? 7;
+  document.getElementById('def-different-discussion').value = diff.discussionSeconds ?? 90;
+  const catSelect = document.getElementById('def-different-category');
+  if(catSelect && catSelect.dataset.filled==='1') catSelect.value = diff.category || "عشوائي";
+
+  const ch = d.chairs||{};
+  document.getElementById('def-chairs-eliminate').value = ch.eliminatePerRound ?? 1;
+
+  const gw = d.guesswho||{};
+  document.getElementById('def-guesswho-rounds').value = gw.totalRounds ?? 3;
+  document.getElementById('def-guesswho-roundtime').value = gw.roundSeconds ?? 180;
+
+  document.getElementById('save-def-different').onclick = async ()=>{
+    await db.ref('gameData/defaults/different').set({
+      category: document.getElementById('def-different-category').value,
+      totalRounds: parseInt(document.getElementById('def-different-rounds').value)||3,
+      oddCount: parseInt(document.getElementById('def-different-odd').value)||1,
+      viewSeconds: parseInt(document.getElementById('def-different-view').value)||7,
+      discussionSeconds: parseInt(document.getElementById('def-different-discussion').value)||90
+    });
+    toast("تم الحفظ ✅");
+  };
+  document.getElementById('save-def-chairs').onclick = async ()=>{
+    await db.ref('gameData/defaults/chairs').set({
+      eliminatePerRound: parseInt(document.getElementById('def-chairs-eliminate').value)||1
+    });
+    toast("تم الحفظ ✅");
+  };
+  document.getElementById('save-def-guesswho').onclick = async ()=>{
+    await db.ref('gameData/defaults/guesswho').set({
+      totalRounds: parseInt(document.getElementById('def-guesswho-rounds').value)||3,
+      roundSeconds: parseInt(document.getElementById('def-guesswho-roundtime').value)||0
+    });
+    toast("تم الحفظ ✅");
+  };
+}
+
+/* ---- بنك الكلمات ---- */
 async function loadWordBank(){
   const snap = await db.ref('gameData/wordBank').get();
   const data = snap.exists() ? snap.val() : {};
   const area = document.getElementById('wordbank-area');
   const categories = Object.keys(data);
+
+  // تعبئة قائمة التصنيف الافتراضي بلعبة "مين المختلف؟"
+  const catSelect = document.getElementById('def-different-category');
+  if(catSelect){
+    const defSnap = await db.ref('gameData/defaults/different/category').get();
+    catSelect.innerHTML = `<option value="عشوائي">🎲 عشوائي</option>` + categories.map(c=>`<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
+    catSelect.value = defSnap.exists() ? defSnap.val() : "عشوائي";
+    catSelect.dataset.filled = '1';
+  }
+
   if(!categories.length){ area.innerHTML = `<p style="color:var(--text-dim); font-size:13.5px;">لا يوجد بنك كلمات محفوظ بعد — سيُنشأ تلقائياً أول مرة تُفتح فيها اللعبة.</p>`; return; }
 
   area.innerHTML = categories.map(cat=>{
@@ -294,6 +424,47 @@ async function loadWordBank(){
       await db.ref(`gameData/wordBank/${cat}`).push({word, emoji});
       toast("تمت الإضافة ✅");
       loadWordBank();
+    };
+  });
+}
+
+/* ---- بنك صور لعبة "شو معي؟" (روابط صور خارجية — بدون Firebase Storage) ---- */
+function wireImageAdd(){
+  document.getElementById('img-add').onclick = async ()=>{
+    const urlInput = document.getElementById('img-url');
+    const labelInput = document.getElementById('img-label');
+    const statusEl = document.getElementById('img-upload-status');
+    const url = urlInput.value.trim();
+    if(!url){ toast("الصق رابط الصورة أولاً"); return; }
+    if(!/^https?:\/\//i.test(url)){ toast("الرابط لازم يبدأ بـ http:// أو https://"); return; }
+    try{
+      await db.ref('gameData/guessImages').push({url, label:labelInput.value.trim()});
+      statusEl.textContent = "تمت الإضافة ✅";
+      urlInput.value = ''; labelInput.value = '';
+      loadGuessImages();
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = "فشلت الإضافة — حاول مرة ثانية";
+    }
+  };
+}
+
+async function loadGuessImages(){
+  const grid = document.getElementById('guess-images-grid');
+  const snap = await db.ref('gameData/guessImages').get();
+  if(!snap.exists()){ grid.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد صور بعد — ألصق أول رابط فوق.</p>`; return; }
+  const data = snap.val();
+  grid.innerHTML = Object.entries(data).map(([key,img])=>`
+    <div class="img-tile">
+      <img src="${escapeHTML(img.url)}" alt="" loading="lazy">
+      <button class="img-del" data-key="${escapeHTML(key)}">✕</button>
+      ${img.label?`<div class="img-label">${escapeHTML(img.label)}</div>`:''}
+    </div>`).join('');
+  grid.querySelectorAll('.img-del').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm("حذف هذه الصورة؟")) return;
+      await db.ref(`gameData/guessImages/${btn.dataset.key}`).set(null);
+      loadGuessImages();
     };
   });
 }

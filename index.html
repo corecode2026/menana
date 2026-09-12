@@ -253,10 +253,13 @@ input{font-family:var(--font-body);}
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
   box-shadow:0 25px 70px rgba(124,92,255,0.25);
   animation:flipin .5s ease;
+  overflow:hidden; position:relative;
 }
 @keyframes flipin{from{transform:rotateY(90deg); opacity:0;} to{transform:rotateY(0); opacity:1;}}
 .word-card .emoji{font-size:88px; line-height:1;}
 .word-card .word{font-family:var(--font-display); font-weight:900; font-size:30px;}
+.word-card .photo-fill{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+.word-card .photo-caption{position:absolute; bottom:0; inset-inline:0; background:linear-gradient(0deg, rgba(0,0,0,0.75), transparent); color:#fff; font-family:var(--font-display); font-weight:800; font-size:16px; padding:22px 14px 12px; text-align:center;}
 .word-card.hidden-word{filter:blur(20px); transition:filter .4s ease;}
 .word-card.odd{
   background:linear-gradient(155deg, rgba(255,138,76,0.24), rgba(255,84,112,0.08));
@@ -453,6 +456,8 @@ const DEFAULT_WORD_BANK = {
 // نسخة حيّة تُملأ من Firebase عند بدء التشغيل (loadGameData)، وتُحدَّث لحظياً إن عدّل الأدمن أثناء التشغيل
 let WORD_BANK = {};
 let ALL_CATEGORIES = [];
+let GUESS_IMAGES = [];      // صور لعبة "شو معي؟" المرفوعة من لوحة التحكم (اختيارية)
+let SETTINGS_DEFAULTS = {}; // إعدادات افتراضية لكل لعبة، تُعدّل من لوحة التحكم
 
 const AVATAR_COLORS = ["#7c5cff","#22d3ee","#ff8a4c","#3ddc97","#ff5470","#ffd166","#5eead4","#c084fc"];
 
@@ -504,6 +509,14 @@ async function loadGameData(){
       }
     });
   });
+
+  const imgSnap = await db.ref('gameData/guessImages').get();
+  GUESS_IMAGES = imgSnap.exists() ? Object.values(imgSnap.val()) : [];
+  db.ref('gameData/guessImages').on('value', snap=>{ GUESS_IMAGES = snap.exists() ? Object.values(snap.val()) : []; });
+
+  const defSnap = await db.ref('gameData/defaults').get();
+  SETTINGS_DEFAULTS = defSnap.exists() ? defSnap.val() : {};
+  db.ref('gameData/defaults').on('value', snap=>{ SETTINGS_DEFAULTS = snap.exists() ? snap.val() : {}; });
 }
 
 /* =========================================================================
@@ -578,17 +591,21 @@ function ensureAuth(){
    إنشاء / الانضمام للغرفة
    ========================================================================= */
 function defaultSettingsFor(gameId, maxPlayers){
+  let base;
   if(gameId==="chairs"){
-    return {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, soundOn:true};
+    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, soundOn:true};
+  } else if(gameId==="guesswho"){
+    base = {minPlayers:2, maxPlayers:2, roundSeconds:180, totalRounds:3, soundOn:true};
+  } else {
+    base = {
+      minPlayers:3, maxPlayers: maxPlayers||8,
+      viewSeconds:7, discussionSeconds:90, voteSeconds:25,
+      totalRounds:3, category:"عشوائي", oddCount:1, imageMode:false, soundOn:true
+    };
   }
-  if(gameId==="guesswho"){
-    return {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
-  }
-  return {
-    minPlayers:3, maxPlayers: maxPlayers||8,
-    viewSeconds:7, discussionSeconds:90, voteSeconds:25,
-    totalRounds:3, category:"عشوائي", oddCount:1, imageMode:false, soundOn:true
-  };
+  const overrides = SETTINGS_DEFAULTS[gameId];
+  if(overrides) Object.assign(base, overrides, {maxPlayers: base.maxPlayers}); // لا تدع الإعدادات الافتراضية تغيّر الحد الأقصى الذي اختاره المستخدم
+  return base;
 }
 
 async function createRoom(name, maxPlayers, gameId){
@@ -927,14 +944,22 @@ async function chairsFinishMatch(){
    لعبة "شو معي؟" — لشخصين بالضبط. كل لاعب يشاهد صورة خصمه الحقيقية (ليجاوب
    عن أسئلته فيها) بينما صورته هو مخفية عنه، ويكتشفها بالأسئلة الشفهية.
    ========================================================================= */
-function guessAssignmentsFor(uidA, uidB, category){
-  const imgA = pickWordPair(category); // صورة A الحقيقية — يشاهدها B
-  const imgB = pickWordPair(category); // صورة B الحقيقية — يشاهدها A
+function pickGuessItem(){
+  if(GUESS_IMAGES && GUESS_IMAGES.length){
+    const img = GUESS_IMAGES[Math.floor(Math.random()*GUESS_IMAGES.length)];
+    return {word: img.label||'', emoji:null, imageUrl: img.url};
+  }
+  const p = pickWordPair("عشوائي");
+  return {word:p.main, emoji:p.mainEmoji, imageUrl:null};
+}
+
+function guessAssignmentsFor(uidA, uidB){
+  const itemA = pickGuessItem(); // صورة A الحقيقية — يشاهدها B
+  const itemB = pickGuessItem(); // صورة B الحقيقية — يشاهدها A
   return {
-    category: imgA.category,
     assignments: {
-      [uidA]: {word:imgB.main, emoji:imgB.mainEmoji},
-      [uidB]: {word:imgA.main, emoji:imgA.mainEmoji}
+      [uidA]: itemB,
+      [uidB]: itemA
     }
   };
 }
@@ -945,11 +970,10 @@ async function startGuessMatch(){
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   if(players.length !== 2){ toast("هذه اللعبة لشخصين بالضبط"); return; }
   const [uidA, uidB] = players.map(([uid])=>uid);
-  const settings = state.room.settings;
-  const built = guessAssignmentsFor(uidA, uidB, settings.category||"عشوائي");
+  const built = guessAssignmentsFor(uidA, uidB);
 
   await db.ref(`rooms/${code}/round`).set({
-    index:1, category: built.category, assignments: built.assignments,
+    index:1, assignments: built.assignments,
     guesses:{}, verdicts:{}, revealed:{},
     phase:"countdown", phaseEndAt: Date.now()+3200, winnerOfRound:null
   });
@@ -1021,13 +1045,12 @@ async function nextGuessRound(){
   if(!state.isHost) return;
   const code = state.roomCode;
   const round = state.room.round;
-  const settings = state.room.settings;
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   const [uidA, uidB] = players.map(([uid])=>uid);
-  const built = guessAssignmentsFor(uidA, uidB, settings.category||"عشوائي");
+  const built = guessAssignmentsFor(uidA, uidB);
 
   await db.ref(`rooms/${code}/round`).set({
-    index:(round.index||1)+1, category: built.category, assignments: built.assignments,
+    index:(round.index||1)+1, assignments: built.assignments,
     guesses:{}, verdicts:{}, revealed:{},
     phase:"countdown", phaseEndAt: Date.now()+3200, winnerOfRound:null
   });
@@ -1213,10 +1236,7 @@ function renderWaitingRoom(){
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
           </div>
         </div>` : gameType==="guesswho" ? `
-        <div class="field">
-          <label>التصنيف</label>
-          ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي"}, ...ALL_CATEGORIES.map(c=>({v:c, label:c}))], settings.category)}
-        </div>
+        <div class="hint-row">${svgIcon('info')}الصور تُدار من لوحة التحكم — إذا ما رُفعت صور، ستُستخدم كلمات وإيموجي بنك الكلمات العام تلقائياً</div>
         <div class="field">
           <label>عدد الجولات</label>
           <div class="segmented" id="set-rounds">
@@ -1305,7 +1325,6 @@ function renderWaitingRoom(){
     if(gameType==="chairs"){
       document.getElementById('set-eliminate').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/eliminatePerRound`).set(parseInt(e.target.dataset.v)); };
     } else if(gameType==="guesswho"){
-      wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
       document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
       document.getElementById('set-roundtime').onclick = e=>{ if(e.target.dataset.v!==undefined) db.ref(`rooms/${state.roomCode}/settings/roundSeconds`).set(parseInt(e.target.dataset.v)); };
     } else {
@@ -1576,6 +1595,21 @@ function renderChairsResult(round){
 /* ---- شو معي؟: شاشات المراحل ---- */
 let guessRevealSentForRound = null;
 
+/* يعرض صورة حقيقية إن وُجدت (imageUrl)، وإلا يرجع لواجهة الإيموجي + الكلمة */
+function pictureCardHTML(item, extraClass){
+  if(!item) return `<div class="word-card ${extraClass||''}"><div class="emoji">❔</div></div>`;
+  if(item.imageUrl){
+    return `<div class="word-card ${extraClass||''}">
+      <img class="photo-fill" src="${escapeHTML(item.imageUrl)}" alt="">
+      ${item.word ? `<div class="photo-caption">${escapeHTML(item.word)}</div>` : ''}
+    </div>`;
+  }
+  return `<div class="word-card ${extraClass||''}">
+    <div class="emoji">${item.emoji||'❔'}</div>
+    <div class="word">${escapeHTML(item.word||'')}</div>
+  </div>`;
+}
+
 function renderGuessPlaying(round){
   const opponentUid = Object.keys(state.room.players).find(uid=>uid!==state.uid);
   const myPic = state.myAssignment; // صورة خصمي الحقيقية — أنا شايفها لأجاوب عن أسئلته
@@ -1594,10 +1628,7 @@ function renderGuessPlaying(round){
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="phase-eyebrow">صورة خصمك — جاوب عن أسئلته فيها</div>
     ${total>0 ? timerRingHTML() : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}بلا حد للوقت</div>`}
-    <div class="word-card">
-      <div class="emoji">${myPic?myPic.emoji:'❔'}</div>
-      <div class="word">${myPic?escapeHTML(myPic.word):'...'}</div>
-    </div>
+    ${pictureCardHTML(myPic)}
     <div class="hint-row" style="justify-content:center;">${svgIcon('info')}صورتك انت مخفية عنك — اسأل خصمك أسئلة نعم/لا لتعرفها</div>
 
     ${opponentGuess ? `
@@ -1659,11 +1690,7 @@ function renderGuessResult(round){
     </div>
 
     <div class="phase-eyebrow">صورتك كانت</div>
-    ${myReveal ? `
-      <div class="word-card">
-        <div class="emoji">${myReveal.emoji}</div>
-        <div class="word">${escapeHTML(myReveal.word)}</div>
-      </div>` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}جارِ الكشف…</div>`}
+    ${myReveal ? pictureCardHTML(myReveal) : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}جارِ الكشف…</div>`}
 
     ${state.isHost ? `<button class="btn btn-primary" id="guess-next" style="margin-top:20px;">${svgIcon('play')}${(state.room.meta.round>=state.room.settings.totalRounds)?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
       : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}بانتظار الهوست للمتابعة…</div>`}

@@ -103,23 +103,54 @@ input{font-family:var(--font-body);}
 .btn[disabled]{opacity:0.45; pointer-events:none;}
 .btn-row{display:flex; gap:12px;}
 
-/* ---- game picker (home page) ---- */
-.game-list{display:flex; flex-direction:column; gap:12px;}
-.game-card{
-  display:flex; align-items:center; gap:14px; padding:16px; border-radius:18px;
-  background:rgba(255,255,255,0.04); border:1px solid var(--border); text-align:right;
-  transition:transform .15s ease, border-color .15s ease, background .15s ease;
+/* ---- game hub (home page) ---- */
+.hub-wrap{width:100%; max-width:920px; margin:0 auto; padding:8px 4px 40px;}
+.hub-header{text-align:center; margin-bottom:36px;}
+.hub-header .brand-mark{width:72px; height:72px; margin:0 auto 18px;}
+.hub-header .brand-mark svg{width:34px; height:34px;}
+.hub-header h1{font-size:32px; font-weight:900; letter-spacing:-0.5px;}
+.hub-header p{color:var(--text-dim); margin-top:10px; font-size:14.5px;}
+.hub-count{
+  display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:100px;
+  background:var(--panel); border:1px solid var(--border); color:var(--text-dim); font-size:12.5px; font-weight:700; margin-top:18px;
 }
-.game-card:hover{border-color:rgba(255,255,255,0.2); background:rgba(255,255,255,0.06);}
-.game-card:active{transform:scale(0.98);}
-.game-card .g-icon{
-  width:52px; height:52px; border-radius:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+.hub-count .dot{width:6px; height:6px; border-radius:50%; background:var(--success); box-shadow:0 0 8px var(--success);}
+
+.game-grid{display:grid; grid-template-columns:repeat(2, 1fr); gap:18px;}
+@media (max-width:660px){ .game-grid{grid-template-columns:1fr;} }
+
+.game-tile{
+  border-radius:22px; overflow:hidden; border:1px solid var(--border); background:var(--panel);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); text-align:right;
+  display:flex; flex-direction:column; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
-.game-card .g-icon svg{width:26px; height:26px;}
-.game-card .g-body{flex:1; min-width:0;}
-.game-card .g-name{font-family:var(--font-display); font-weight:800; font-size:16.5px;}
-.game-card .g-tag{color:var(--text-dim); font-size:12.5px; margin-top:3px; line-height:1.5;}
-.game-count{text-align:center; color:var(--text-dim); font-size:13px; font-weight:600; margin-bottom:14px;}
+.game-tile:hover{transform:translateY(-5px); border-color:rgba(255,255,255,0.22); box-shadow:0 22px 55px rgba(0,0,0,0.4);}
+.game-tile:active{transform:translateY(-1px) scale(0.99);}
+.game-tile .t-banner{
+  height:104px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; flex-shrink:0;
+}
+.game-tile .t-banner::after{content:''; position:absolute; inset:0; background:radial-gradient(circle at 75% 15%, rgba(255,255,255,0.28), transparent 60%);}
+.game-tile .t-banner svg{width:40px; height:40px; position:relative; z-index:1;}
+.game-tile .t-body{padding:16px 18px 18px; display:flex; flex-direction:column; gap:8px; flex:1;}
+.game-tile .t-name{font-family:var(--font-display); font-weight:800; font-size:17px;}
+.game-tile .t-tag{color:var(--text-dim); font-size:12.5px; line-height:1.65; flex:1;}
+.game-tile .t-footer{display:flex; align-items:center; justify-content:space-between; margin-top:6px; gap:10px;}
+.game-tile .t-players{font-size:11.5px; color:var(--text-dim); display:flex; align-items:center; gap:5px; white-space:nowrap;}
+.game-tile .t-play{
+  display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:10px;
+  background:rgba(255,255,255,0.07); color:var(--text); font-weight:700; font-size:12.5px; border:1px solid var(--border);
+  transition:background .18s ease, border-color .18s ease;
+}
+.game-tile:hover .t-play{background:var(--violet); border-color:var(--violet);}
+
+.quick-join{
+  display:flex; align-items:center; justify-content:center; gap:8px; margin-top:26px;
+  color:var(--text-dim); font-size:13px; font-weight:600;
+}
+.quick-join button{color:var(--violet-2); font-weight:800; text-decoration:underline; background:none; border:none; font-size:13px;}
+
+/* ---- game picker (home page) — see .hub-* / .game-tile above ---- */
+
 
 .stack{display:flex; flex-direction:column; gap:12px;}
 
@@ -395,68 +426,79 @@ const GAMES = [
 function gameById(id){ return GAMES.find(g=>g.id===id) || GAMES[0]; }
 
 /* =========================================================================
-   بنك الكلمات والصور (رموز تعبيرية) — مقسّمة حسب التصنيف
-   كل عنصر: [الكلمة الأساسية, رمزها, الكلمة المختلفة, رمزها]
+   بنك الكلمات (رموز تعبيرية) — قيم افتراضية تُستخدم أول مرة فقط لتهيئة
+   قاعدة البيانات؛ بعدها تُدار بالكامل من لوحة التحكم (admin.html) وتُقرأ لحظياً هنا.
    ========================================================================= */
-const WORD_BANK = {
-  "حيوانات": [
-    ["قطة","🐱","كلب","🐶"], ["أسد","🦁","نمر","🐯"], ["بطة","🦆","دجاجة","🐔"],
-    ["حصان","🐴","حمار وحشي","🦓"], ["نحلة","🐝","فراشة","🦋"], ["سمكة","🐟","قرش","🦈"],
-    ["دب","🐻","باندا","🐼"], ["أرنب","🐰","سنجاب","🐿️"]
-  ],
-  "أكل": [
-    ["بيتزا","🍕","برجر","🍔"], ["تفاحة","🍎","برتقالة","🍊"], ["شاي","🍵","قهوة","☕"],
-    ["أرز","🍚","مكرونة","🍝"], ["موز","🍌","عنب","🍇"], ["دجاج مشوي","🍗","لحم مشوي","🥩"],
-    ["كيك","🍰","دونات","🍩"], ["بطاطا مقلية","🍟","شيبس","🥔"]
-  ],
-  "سيارات": [
-    ["سيارة","🚗","دراجة نارية","🏍️"], ["شاحنة","🚚","حافلة","🚌"],
-    ["دراجة هوائية","🚲","سكوتر","🛴"], ["قطار","🚆","طائرة","✈️"], ["سفينة","🚢","قارب","⛵"]
-  ],
-  "ألعاب": [
-    ["شطرنج","♟️","طاولة زهر","🎲"], ["كرة قدم","⚽","كرة سلة","🏀"],
-    ["ألغاز","🧩","كلمات متقاطعة","📝"], ["بطاقات لعب","🃏","دومينو","🁢"]
-  ],
-  "أفلام": [
-    ["فيلم رعب","👻","فيلم رعب نفسي","🧠"], ["فيلم كوميدي","😂","فيلم رومانسي","❤️"],
-    ["فيلم أكشن","💥","فيلم مغامرات","🗺️"], ["فيلم خيال علمي","🚀","فيلم خيالي","🪄"]
-  ],
-  "أماكن": [
-    ["بحر","🌊","مسبح","🏊"], ["صحراء","🏜️","جبل","⛰️"], ["مدرسة","🏫","جامعة","🎓"],
-    ["مطعم","🍽️","مقهى","☕"], ["حديقة","🌳","غابة","🌲"]
-  ],
-  "أدوات": [
-    ["مطرقة","🔨","مفك براغي","🪛"], ["مقص","✂️","سكين","🔪"],
-    ["فرشاة شعر","💇","مشط","🪮"], ["مفتاح","🔑","قفل","🔒"]
-  ],
-  "رياضة": [
-    ["كرة قدم","⚽","كرة يد","🤾"], ["سباحة","🏊‍♂️","غوص","🤿"],
-    ["ملاكمة","🥊","مصارعة","🤼"], ["جري","🏃","مشي","🚶"]
-  ],
-  "مهن": [
-    ["طبيب","👨‍⚕️","ممرض","🧑‍⚕️"], ["معلم","👨‍🏫","مدير مدرسة","🧑‍💼"],
-    ["طباخ","👨‍🍳","نادل","🧑‍🍽️"], ["مهندس","👷","فني","🔧"]
-  ],
-  "تكنولوجيا": [
-    ["هاتف","📱","كمبيوتر","💻"], ["ساعة ذكية","⌚","سماعة","🎧"],
-    ["كاميرا","📷","طابعة","🖨️"], ["إنترنت","🌐","بلوتوث","📶"]
-  ],
-  "دول": [
-    ["مصر","🇪🇬","السعودية","🇸🇦"], ["الأردن","🇯🇴","فلسطين","🇵🇸"],
-    ["لبنان","🇱🇧","سوريا","🇸🇾"], ["المغرب","🇲🇦","الجزائر","🇩🇿"], ["الإمارات","🇦🇪","قطر","🇶🇦"]
-  ],
-  "مشاهير": [
-    ["مغني مشهور","🎤","ممثل مشهور","🎬"], ["لاعب كرة قدم","⚽","لاعب كرة سلة","🏀"],
-    ["عالم مشهور","🔬","مخترع مشهور","💡"], ["رسام مشهور","🎨","مصمم أزياء","🧵"]
-  ],
-  "أشياء عشوائية": [
-    ["مظلة","☂️","قبعة","🎩"], ["نظارة","👓","ساعة يد","⌚"],
-    ["كرسي","🪑","أريكة","🛋️"], ["مصباح","💡","شمعة","🕯️"], ["حقيبة","🎒","محفظة","👛"]
-  ]
+const DEFAULT_WORD_BANK = {
+  "حيوانات": [["قطة","🐱"],["أسد","🦁"],["بطة","🦆"],["حصان","🐴"],["نحلة","🐝"],["سمكة","🐟"],["دب","🐻"],["أرنب","🐰"]],
+  "أكل": [["بيتزا","🍕"],["تفاحة","🍎"],["شاي","🍵"],["أرز","🍚"],["موز","🍌"],["دجاج مشوي","🍗"],["كيك","🍰"],["بطاطا مقلية","🍟"]],
+  "سيارات": [["سيارة","🚗"],["شاحنة","🚚"],["دراجة هوائية","🚲"],["قطار","🚆"],["سفينة","🚢"]],
+  "ألعاب": [["شطرنج","♟️"],["كرة قدم","⚽"],["ألغاز","🧩"],["بطاقات لعب","🃏"]],
+  "أفلام": [["فيلم رعب","👻"],["فيلم كوميدي","😂"],["فيلم أكشن","💥"],["فيلم خيال علمي","🚀"]],
+  "أماكن": [["بحر","🌊"],["صحراء","🏜️"],["مدرسة","🏫"],["مطعم","🍽️"],["حديقة","🌳"]],
+  "أدوات": [["مطرقة","🔨"],["مقص","✂️"],["فرشاة شعر","💇"],["مفتاح","🔑"]],
+  "رياضة": [["كرة قدم","⚽"],["سباحة","🏊‍♂️"],["ملاكمة","🥊"],["جري","🏃"]],
+  "مهن": [["طبيب","👨‍⚕️"],["معلم","👨‍🏫"],["طباخ","👨‍🍳"],["مهندس","👷"]],
+  "تكنولوجيا": [["هاتف","📱"],["ساعة ذكية","⌚"],["كاميرا","📷"],["إنترنت","🌐"]],
+  "دول": [["مصر","🇪🇬"],["الأردن","🇯🇴"],["لبنان","🇱🇧"],["المغرب","🇲🇦"],["الإمارات","🇦🇪"]],
+  "مشاهير": [["مغني مشهور","🎤"],["لاعب كرة قدم","⚽"],["عالم مشهور","🔬"],["رسام مشهور","🎨"]],
+  "أشياء عشوائية": [["مظلة","☂️"],["نظارة","👓"],["كرسي","🪑"],["مصباح","💡"],["حقيبة","🎒"]]
 };
-const ALL_CATEGORIES = Object.keys(WORD_BANK);
+// نسخة حيّة تُملأ من Firebase عند بدء التشغيل (loadGameData)، وتُحدَّث لحظياً إن عدّل الأدمن أثناء التشغيل
+let WORD_BANK = {};
+let ALL_CATEGORIES = [];
 
 const AVATAR_COLORS = ["#7c5cff","#22d3ee","#ff8a4c","#3ddc97","#ff5470","#ffd166","#5eead4","#c084fc"];
+
+/* تحميل بيانات اللعبة القابلة للتعديل من لوحة التحكم: أسماء الألعاب + بنك الكلمات */
+async function loadGameData(){
+  const wbSnap = await db.ref('gameData/wordBank').get();
+  if(wbSnap.exists()){
+    const raw = wbSnap.val();
+    WORD_BANK = {};
+    Object.entries(raw).forEach(([cat, words])=>{
+      WORD_BANK[cat] = Object.values(words||{}).map(w=>[w.word, w.emoji]);
+    });
+  } else {
+    // أول تشغيل على الإطلاق: نزرع القيم الافتراضية في قاعدة البيانات كي تظهر بلوحة التحكم
+    WORD_BANK = JSON.parse(JSON.stringify(DEFAULT_WORD_BANK));
+    const seed = {};
+    Object.entries(DEFAULT_WORD_BANK).forEach(([cat, words])=>{
+      seed[cat] = words.map(([word,emoji])=>({word,emoji}));
+    });
+    db.ref('gameData/wordBank').set(seed).catch(()=>{});
+  }
+  ALL_CATEGORIES = Object.keys(WORD_BANK);
+
+  const gamesSnap = await db.ref('gameData/games').get();
+  if(gamesSnap.exists()){
+    const overrides = gamesSnap.val();
+    GAMES.forEach(g=>{
+      if(overrides[g.id]){
+        if(overrides[g.id].name) g.name = overrides[g.id].name;
+        if(overrides[g.id].tagline) g.tagline = overrides[g.id].tagline;
+      }
+    });
+  }
+  // تحديث لحظي: أي تعديل من لوحة التحكم أثناء تشغيل اللعبة ينعكس مباشرة (يُطبَّق على الجولة القادمة)
+  db.ref('gameData/wordBank').on('value', snap=>{
+    if(!snap.exists()) return;
+    const raw = snap.val();
+    const updated = {};
+    Object.entries(raw).forEach(([cat, words])=>{ updated[cat] = Object.values(words||{}).map(w=>[w.word, w.emoji]); });
+    WORD_BANK = updated; ALL_CATEGORIES = Object.keys(WORD_BANK);
+  });
+  db.ref('gameData/games').on('value', snap=>{
+    if(!snap.exists()) return;
+    const overrides = snap.val();
+    GAMES.forEach(g=>{
+      if(overrides[g.id]){
+        if(overrides[g.id].name) g.name = overrides[g.id].name;
+        if(overrides[g.id].tagline) g.tagline = overrides[g.id].tagline;
+      }
+    });
+  });
+}
 
 /* =========================================================================
    حالة التطبيق المحلية
@@ -913,29 +955,38 @@ function appRoot(){ return document.getElementById('app'); }
 function renderHome(){
   document.getElementById('app').innerHTML = `
   <div class="wrap">
-    <div class="card">
-      <div class="brand">
+    <div class="hub-wrap">
+      <div class="hub-header">
         <div class="brand-mark">${svgLogo()}</div>
         <h1>منصّة الألعاب الجماعية</h1>
         <p>اختر لعبة والعبها مع أصدقائك برابط واحد</p>
+        <div class="hub-count"><span class="dot"></span>${GAMES.length} ألعاب متاحة الآن</div>
       </div>
-      <div class="game-count">🎮 عدد الألعاب المتاحة: ${GAMES.length}</div>
-      <div class="game-list">
+
+      <div class="game-grid">
         ${GAMES.map(g=>`
-          <button class="game-card" data-g="${g.id}">
-            <div class="g-icon" style="background:${g.grad}">${g.iconSvg}</div>
-            <div class="g-body">
-              <div class="g-name">${escapeHTML(g.name)}</div>
-              <div class="g-tag">${escapeHTML(g.tagline)}</div>
+          <button class="game-tile" data-g="${g.id}">
+            <div class="t-banner" style="background:${g.grad}">${g.iconSvg}</div>
+            <div class="t-body">
+              <div class="t-name">${escapeHTML(g.name)}</div>
+              <div class="t-tag">${escapeHTML(g.tagline)}</div>
+              <div class="t-footer">
+                <div class="t-players">${svgIcon('users')}${g.minPlayers}+ لاعبين</div>
+                <div class="t-play">العب الآن${svgIcon('chevron-left')}</div>
+              </div>
             </div>
-            ${svgIcon('chevron-left')}
           </button>`).join('')}
+      </div>
+
+      <div class="quick-join">
+        عندك كود غرفة جاهز؟ <button id="quick-join-btn">ادخل مباشرة</button>
       </div>
     </div>
   </div>`;
-  document.querySelectorAll('.game-card').forEach(btn=>{
+  document.querySelectorAll('.game-tile').forEach(btn=>{
     btn.onclick = ()=> renderGamePicked(btn.dataset.g);
   });
+  document.getElementById('quick-join-btn').onclick = ()=> renderJoin();
 }
 
 function renderGamePicked(gameId){
@@ -1434,7 +1485,8 @@ function svgIcon(name){
     send:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
     check:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
     chevron:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
-    'chevron-left':'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
+    'chevron-left':'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    users:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="10" cy="7" r="3.5"/><path d="M22 20v-1a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
   };
   return icons[name]||'';
 }
@@ -1534,6 +1586,7 @@ function launchConfetti(){
    ========================================================================= */
 (async function init(){
   await ensureAuth();
+  await loadGameData();
   const params = new URLSearchParams(location.search);
   const roomFromLink = params.get('room');
   if(roomFromLink){

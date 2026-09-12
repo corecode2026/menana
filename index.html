@@ -187,6 +187,11 @@ input{font-family:var(--font-body);}
 .word-card .emoji{font-size:88px; line-height:1;}
 .word-card .word{font-family:var(--font-display); font-weight:900; font-size:30px;}
 .word-card.hidden-word{filter:blur(20px); transition:filter .4s ease;}
+.word-card.odd{
+  background:linear-gradient(155deg, rgba(255,138,76,0.24), rgba(255,84,112,0.08));
+  border-color:rgba(255,138,76,0.4);
+  box-shadow:0 25px 70px rgba(255,138,76,0.22);
+}
 .word-card .category-tag{font-size:12px; color:var(--text-dim); background:rgba(0,0,0,0.25); padding:6px 12px; border-radius:100px;}
 
 .timer-ring-wrap{position:relative; width:96px; height:96px; margin:6px auto;}
@@ -438,7 +443,7 @@ async function createRoom(name, maxPlayers){
   const now = firebase.database.ServerValue.TIMESTAMP;
   const settings = {
     minPlayers:3, maxPlayers: maxPlayers||8,
-    viewSeconds:7, hintSeconds:20, voteSeconds:25,
+    viewSeconds:7, discussionSeconds:90, voteSeconds:25,
     totalRounds:3, category:"عشوائي", oddCount:1, imageMode:false, soundOn:true
   };
   // تُكتب كل جزئية على حدة وبالترتيب الصحيح لأن قواعد الحماية تمنح صلاحية الكتابة
@@ -526,7 +531,7 @@ function pickWordPair(category){
   const cat = (category==="عشوائي") ? ALL_CATEGORIES[Math.floor(Math.random()*ALL_CATEGORIES.length)] : category;
   const list = WORD_BANK[cat];
   const pair = list[Math.floor(Math.random()*list.length)];
-  return {category:cat, main:pair[0], mainEmoji:pair[1], odd:pair[2], oddEmoji:pair[3]};
+  return {category:cat, main:pair[0], mainEmoji:pair[1]};
 }
 
 async function startRound(){
@@ -539,23 +544,23 @@ async function startRound(){
   const oddCount = Math.min(settings.oddCount||1, Math.max(1, Math.floor(players.length/3)));
   const shuffled = [...players].sort(()=>Math.random()-0.5);
   const oddUids = shuffled.slice(0, oddCount).map(([uid])=>uid);
-  const turnOrder = shuffled.map(([uid])=>uid).sort(()=>Math.random()-0.5);
-  const pair = pickWordPair(settings.category||"عشوائي");
+  const word = pickWordPair(settings.category||"عشوائي");
   const now = firebase.database.ServerValue.TIMESTAMP;
 
+  // اللاعب "المختلف" لا يحصل على أي كلمة إطلاقاً — عليه أن يتصرف وكأنه يعرفها
   const assignments = {};
   players.forEach(([uid])=>{
     assignments[uid] = oddUids.includes(uid)
-      ? {word:pair.odd, emoji:pair.oddEmoji}
-      : {word:pair.main, emoji:pair.mainEmoji};
+      ? {word:null, emoji:"❓", unknown:true}
+      : {word:word.main, emoji:word.mainEmoji, unknown:false};
   });
 
   await db.ref(`rooms/${code}/round`).set({
     index:(state.room.meta.round||0)+1,
-    category:pair.category, mainWord:pair.main, mainEmoji:pair.mainEmoji, oddWord:pair.odd, oddEmoji:pair.oddEmoji,
-    oddPlayers:oddUids, turnOrder, turnIndex:0,
+    category:word.category, mainWord:word.main, mainEmoji:word.mainEmoji,
+    oddPlayers:oddUids,
     assignments,
-    hints:{}, votes:{},
+    votes:{},
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:(state.room.meta.round||0)+1});
@@ -569,42 +574,24 @@ async function advanceToReveal(){
   const seconds = (state.room.settings.viewSeconds)||7;
   await db.ref(`rooms/${code}/round`).update({phase:"reveal", phaseEndAt: Date.now()+seconds*1000});
   await db.ref(`rooms/${code}/meta/phase`).set("reveal");
-  setTimeout(()=>advanceToHints(), seconds*1000+50);
+  setTimeout(()=>advanceToDiscussion(), seconds*1000+50);
 }
 
-async function advanceToHints(){
+/* مرحلة النقاش: لا يوجد تلميحات داخل التطبيق — اللاعبون يتحدثون عبر Discord أو صوتياً،
+   والتطبيق يعرض فقط عداداً مشتركاً لوقت النقاش قبل الانتقال للتصويت. */
+async function advanceToDiscussion(){
   if(!state.isHost) return;
   const code = state.roomCode;
-  const seconds = (state.room.settings.hintSeconds)||20;
-  await db.ref(`rooms/${code}/round`).update({phase:"hints", turnIndex:0, phaseEndAt: Date.now()+seconds*1000});
-  await db.ref(`rooms/${code}/meta/phase`).set("hints");
-  scheduleHintTurnTimeout();
-}
-
-function scheduleHintTurnTimeout(){
-  if(!state.isHost) return;
-  clearTimeout(scheduleHintTurnTimeout._t);
-  const seconds = (state.room.settings.hintSeconds)||20;
-  scheduleHintTurnTimeout._t = setTimeout(async ()=>{
-    // يتحقق الهوست إن كانت هذه المهلة ما تزال صالحة قبل التخطي
+  const seconds = (state.room.settings.discussionSeconds)||90;
+  await db.ref(`rooms/${code}/round`).update({phase:"discussion", phaseEndAt: Date.now()+seconds*1000});
+  await db.ref(`rooms/${code}/meta/phase`).set("discussion");
+  clearTimeout(advanceToDiscussion._t);
+  advanceToDiscussion._t = setTimeout(async ()=>{
     const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
     const round = snap.val();
-    if(!round || round.phase!=="hints") return;
-    await advanceHintTurn(round, true);
+    if(!round || round.phase!=="discussion") return;
+    advanceToVoting();
   }, seconds*1000+150);
-}
-
-async function advanceHintTurn(round, timedOut){
-  if(!state.isHost) return;
-  const code = state.roomCode;
-  const nextIndex = round.turnIndex+1;
-  if(nextIndex >= round.turnOrder.length){
-    await advanceToVoting();
-  } else {
-    const seconds = (state.room.settings.hintSeconds)||20;
-    await db.ref(`rooms/${code}/round`).update({turnIndex: nextIndex, phaseEndAt: Date.now()+seconds*1000});
-    scheduleHintTurnTimeout();
-  }
 }
 
 async function advanceToVoting(){
@@ -672,42 +659,13 @@ async function restartGame(){
   await db.ref(`rooms/${state.roomCode}`).update(resets);
 }
 
-/* لاعب يقدّم تلميحاً */
-async function submitHint(text){
-  const round = state.room.round;
-  const code = state.roomCode;
-  const myUid = state.uid;
-  if(round.turnOrder[round.turnIndex] !== myUid) return;
-  if(round.hints && round.hints[myUid]) return; // منع الإرسال المكرر
-  const clean = sanitizeInput(text, 60);
-  if(!clean){ toast("اكتب تلميحاً أولاً"); return; }
-  const forbidden = [round.mainWord, round.oddWord].filter(Boolean);
-  const norm = s=>s.replace(/[\u064B-\u0652]/g,"").trim();
-  if(forbidden.some(w=> norm(clean).includes(norm(w)))){
-    toast("لا يمكنك ذكر الكلمة مباشرة"); return;
-  }
-  await db.ref(`rooms/${code}/round/hints/${myUid}`).set(clean);
-  if(state.isHost){
-    const snap = await db.ref(`rooms/${code}/round`).get();
-    await advanceHintTurn(snap.val(), false);
-  } else {
-    // إشعار الهوست عبر تحديث بسيط: الهوست يراقب round.hints تغييراته بنفسه
-    db.ref(`rooms/${code}/round/_ping`).set(firebase.database.ServerValue.TIMESTAMP);
-  }
-}
-
-/* الهوست يراقب أي تحديث للتلميحات كي يقدّم الدور لو أرسل غير الهوست */
-let lastHintCount = -1;
-function watchHintsAsHost(round){
-  if(!state.isHost || !round || round.phase!=="hints") { lastHintCount=-1; return; }
-  const count = Object.keys(round.hints||{}).length;
-  if(count !== lastHintCount){
-    lastHintCount = count;
-    const currentTurnUid = round.turnOrder[round.turnIndex];
-    if(round.hints && round.hints[currentTurnUid]){
-      advanceHintTurn(round, false);
-    }
-  }
+/* الهوست يمكنه إنهاء وقت النقاش مبكراً والانتقال مباشرة للتصويت */
+async function skipDiscussion(){
+  if(!state.isHost) return;
+  const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="discussion") return;
+  advanceToVoting();
 }
 
 /* لاعب يصوّت */
@@ -868,6 +826,12 @@ function renderWaitingRoom(){
           </div>
         </div>
         <div class="field">
+          <label>مدة النقاش عبر الديسكورد</label>
+          <div class="segmented" id="set-discussion">
+            ${[60,90,120,180].map(n=>`<button data-v="${n}" class="${settings.discussionSeconds===n?'active':''}">${(n/60)} د</button>`).join('')}
+          </div>
+        </div>
+        <div class="field">
           <label>عدد اللاعبين "المختلفين"</label>
           <div class="segmented" id="set-odd">
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.oddCount===n?'active':''}">${n}</button>`).join('')}
@@ -890,6 +854,7 @@ function renderWaitingRoom(){
     document.getElementById('set-category').onchange = e=> db.ref(`rooms/${state.roomCode}/settings/category`).set(e.target.value);
     document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
     document.getElementById('set-view').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/viewSeconds`).set(parseInt(e.target.dataset.v)); };
+    document.getElementById('set-discussion').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/discussionSeconds`).set(parseInt(e.target.dataset.v)); };
     document.getElementById('set-odd').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/oddCount`).set(parseInt(e.target.dataset.v)); };
     const startBtn = document.getElementById('start-btn');
     if(startBtn) startBtn.onclick = startRound;
@@ -900,11 +865,10 @@ function renderPlayingPhase(){
   const round = state.room.round;
   if(!round) return;
   clearTimer();
-  if(state.isHost) watchHintsAsHost(round);
 
   if(round.phase==="countdown") renderCountdown(round);
   else if(round.phase==="reveal") renderReveal(round);
-  else if(round.phase==="hints") renderHints(round);
+  else if(round.phase==="discussion") renderDiscussion(round);
   else if(round.phase==="voting") renderVoting(round);
   else if(round.phase==="results") renderResults(round);
 }
@@ -930,14 +894,17 @@ function renderReveal(round){
   const mine = state.myAssignment;
   const remaining = Math.max(0, round.phaseEndAt - Date.now());
   const total = (state.room.settings.viewSeconds||7)*1000;
+  const isUnknown = mine && mine.unknown;
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage">
-    <div class="phase-eyebrow">احفظ كلمتك جيداً</div>
+    <div class="phase-eyebrow">${isUnknown?'أنت الشخص المختلف':'احفظ كلمتك جيداً'}</div>
     ${timerRingHTML()}
-    <div class="word-card" id="wcard">
+    <div class="word-card ${isUnknown?'odd':''}" id="wcard">
       <div class="category-tag">${escapeHTML(round.category)}</div>
       <div class="emoji">${mine?mine.emoji:'❔'}</div>
-      <div class="word">${mine?escapeHTML(mine.word):'...'}</div>
+      ${isUnknown
+        ? `<div class="word" style="font-size:19px; line-height:1.5;">أنت لا تعرف الكلمة!<br>راقب الباقي وتصرّف بثقة</div>`
+        : `<div class="word">${mine?escapeHTML(mine.word):'...'}</div>`}
     </div>
   </div></div>`;
 
@@ -947,47 +914,37 @@ function renderReveal(round){
   });
 }
 
-function renderHints(round){
-  const order = round.turnOrder;
-  const currentUid = order[round.turnIndex];
-  const players = state.room.players;
-  const isMyTurn = currentUid===state.uid;
+function renderDiscussion(round){
+  const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false)
+    .sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
   const remaining = Math.max(0, round.phaseEndAt - Date.now());
-  const total = (state.room.settings.hintSeconds||20)*1000;
-  const hints = round.hints||{};
+  const total = (state.room.settings.discussionSeconds||90)*1000;
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="turn-banner">
-      <div class="phase-eyebrow">${isMyTurn?'دورك الآن':'دور اللاعب'}</div>
-      <div class="who">${escapeHTML(players[currentUid]?players[currentUid].name:'')}</div>
-      ${timerRingHTML(true)}
-    </div>
-    ${isMyTurn ? `
-      <div class="field" style="width:100%;">
-        <input id="hint-input" placeholder="اكتب تلميحاً بدون ذكر الكلمة مباشرة" maxlength="60">
+      <div class="phase-eyebrow">وقت النقاش 🎙️</div>
+      <div class="who" style="font-size:16px; font-family:var(--font-body); font-weight:500; color:var(--text-dim); margin-top:6px;">
+        تحدثوا عبر الديسكورد — أعطوا تلميحات عن الكلمة بدون ذكرها مباشرة
       </div>
-      <div class="warn-msg" id="hint-warn"></div>
-      <button class="btn btn-primary" id="hint-submit" style="width:100%;">${svgIcon('send')}إرسال التلميح</button>
-    ` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}بانتظار تلميح ${escapeHTML(players[currentUid]?players[currentUid].name:'')}…</div>`}
+      ${timerRingHTML()}
+    </div>
 
-    <div class="section-title" style="width:100%;">التلميحات حتى الآن</div>
-    <div class="hints-log">
-      ${order.map(uid=>`
-        <div class="hint-item">
-          <div class="who">${escapeHTML(players[uid]?players[uid].name:'')}</div>
-          <div class="txt ${hints[uid]?'':'pending'}">${hints[uid]?escapeHTML(hints[uid]):'…'}</div>
+    <div class="section-title" style="width:100%;">اللاعبون في الجولة</div>
+    <div class="player-list" style="width:100%;">
+      ${players.map(([uid,p])=>`
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+          <div class="name">${escapeHTML(p.name)}</div>
         </div>`).join('')}
     </div>
+
+    ${state.isHost ? `<button class="btn btn-secondary" id="skip-discussion" style="margin-top:18px;">${svgIcon('play')}إنهاء النقاش والانتقال للتصويت</button>` : ''}
   </div></div>`;
 
   startRingCountdown(total, remaining, ()=>{});
 
-  if(isMyTurn){
-    const input = document.getElementById('hint-input');
-    const submit = ()=>{ submitHint(input.value); };
-    document.getElementById('hint-submit').onclick = submit;
-    input.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
-    input.focus();
+  if(state.isHost){
+    document.getElementById('skip-discussion').onclick = skipDiscussion;
   }
 }
 
@@ -1039,10 +996,10 @@ function renderResults(round){
     </div>
     <div class="phase-eyebrow">${round.oddPlayers.length>1?'اللاعبون المختلفون كانوا':'اللاعب المختلف كان'}</div>
     <div class="reveal-name">${round.oddPlayers.map(uid=>escapeHTML(players[uid]?players[uid].name:'')).join(' و ')}</div>
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}${round.oddPlayers.length>1?'لم يكونوا يعرفون الكلمة إطلاقاً':'لم يكن يعرف الكلمة إطلاقاً'}</div>
 
     <div class="words-compare">
-      <div class="wc-box"><div class="tag">كلمة البقية</div><div class="em">${round.mainEmoji}</div><div class="wd">${escapeHTML(round.mainWord)}</div></div>
-      <div class="wc-box odd"><div class="tag">كلمة المختلف</div><div class="em">${round.oddEmoji}</div><div class="wd">${escapeHTML(round.oddWord)}</div></div>
+      <div class="wc-box" style="flex:1;"><div class="tag">الكلمة كانت</div><div class="em">${round.mainEmoji}</div><div class="wd">${escapeHTML(round.mainWord)}</div></div>
     </div>
 
     <div class="vote-tally">

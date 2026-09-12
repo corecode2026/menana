@@ -108,7 +108,8 @@ const auth = firebase.auth();
 
 const GAMES_META = [
   {id:"different", defaultName:"مين المختلف؟", defaultTagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة"},
-  {id:"chairs", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"}
+  {id:"chairs", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
+  {id:"guesswho", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"}
 ];
 
 function escapeHTML(str){ return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }

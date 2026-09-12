@@ -40,8 +40,8 @@
 html,body{height:100%;}
 body{
   background:
-    radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.16), transparent 60%),
-    radial-gradient(900px 600px at 110% 10%, rgba(34,211,238,0.10), transparent 55%),
+    radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.11), transparent 60%),
+    radial-gradient(900px 600px at 110% 10%, rgba(34,211,238,0.07), transparent 55%),
     var(--bg-0);
   color:var(--text);
   font-family:var(--font-body);
@@ -129,10 +129,10 @@ input{font-family:var(--font-body);}
 .game-tile .t-banner{
   height:104px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; flex-shrink:0;
 }
-.game-tile .t-banner::after{content:''; position:absolute; inset:0; background:radial-gradient(circle at 75% 15%, rgba(255,255,255,0.28), transparent 60%);}
-.game-tile .t-banner svg{width:40px; height:40px; position:relative; z-index:1;}
+.game-tile .t-banner::after{content:''; position:absolute; inset:0; background:radial-gradient(circle at 75% 15%, rgba(255,255,255,0.16), transparent 60%);}
+.game-tile .t-banner svg{width:38px; height:38px; position:relative; z-index:1; filter:drop-shadow(0 2px 6px rgba(0,0,0,0.35));}
 .game-tile .t-body{padding:16px 18px 18px; display:flex; flex-direction:column; gap:8px; flex:1;}
-.game-tile .t-name{font-family:var(--font-display); font-weight:800; font-size:17px;}
+.game-tile .t-name{font-family:var(--font-display); font-weight:800; font-size:18px; color:#fff;}
 .game-tile .t-tag{color:var(--text-dim); font-size:12.5px; line-height:1.65; flex:1;}
 .game-tile .t-footer{display:flex; align-items:center; justify-content:space-between; margin-top:6px; gap:10px;}
 .game-tile .t-players{font-size:11.5px; color:var(--text-dim); display:flex; align-items:center; gap:5px; white-space:nowrap;}
@@ -414,13 +414,13 @@ const auth = firebase.auth();
 const GAMES = [
   {
     id:"different", name:"مين المختلف؟", tagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة",
-    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3" stroke-dasharray="2 2"/><path d="M11 12h2"/></svg>',
-    grad:"linear-gradient(155deg, var(--violet), var(--cyan))"
+    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.2" fill="#fff" stroke="none"/><path d="M14.6 14.6L20 20"/></svg>',
+    grad:"linear-gradient(160deg, #5b4bd6 0%, #2f8fae 100%)"
   },
   {
     id:"chairs", name:"الكراسي الموسيقية", tagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!",
-    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9a3 3 0 0 0 3 3h1M6 4h5M6 8h5"/><path d="M18 4v16M18 4h-4v6h4"/></svg>',
-    grad:"linear-gradient(155deg, var(--amber), var(--danger))"
+    minPlayers:3, iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.8"/><circle cx="17.5" cy="16" r="2.8"/></svg>',
+    grad:"linear-gradient(160deg, #c97a45 0%, #b8455f 100%)"
   }
 ];
 function gameById(id){ return GAMES.find(g=>g.id===id) || GAMES[0]; }

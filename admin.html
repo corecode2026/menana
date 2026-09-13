@@ -119,7 +119,8 @@ const auth = firebase.auth();
 const GAMES_META = [
   {id:"different", tab:"مين المختلف؟", defaultName:"مين المختلف؟", defaultTagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة"},
   {id:"chairs", tab:"الكراسي الموسيقية", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
-  {id:"guesswho", tab:"شو معي؟", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"}
+  {id:"guesswho", tab:"شو معي؟", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"},
+  {id:"draw", tab:"خمن", defaultName:"خمن", defaultTagline:"لاعب وحد يرسم كلمة سرية على لوحة مشتركة، وباقي اللاعبين يخمنوا شو هي"}
 ];
 
 function escapeHTML(str){ return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
@@ -256,6 +257,20 @@ async function renderDashboard(){
       </div>
     </div>
 
+    <!-- تبويب: خمن -->
+    <div class="tab-panel" id="tab-draw">
+      <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-draw"></div></div>
+      <div class="card">
+        <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
+        <div class="row2">
+          <div class="field"><label>عدد الجولات</label><input id="def-draw-rounds" type="number" min="1" max="20"></div>
+          <div class="field"><label>وقت الرسم لكل جولة (ثانية)</label><input id="def-draw-time" type="number" min="20" max="300"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-def-draw">حفظ الإعدادات الافتراضية</button>
+      </div>
+      <p class="hint">لعبة "خمن" تستخدم نفس "بنك الكلمات (احتياطي)" الموجود بالتبويب الأخير لاختيار الكلمات يلي يرسمها اللاعبون — لا حاجة لبنك منفصل.</p>
+    </div>
+
     <!-- تبويب: الصور الحقيقية (API) -->
     <div class="tab-panel" id="tab-photos">
       <div class="card">
@@ -374,6 +389,10 @@ async function loadAllDefaults(){
   document.getElementById('def-guesswho-rounds').value = gw.totalRounds ?? 3;
   document.getElementById('def-guesswho-roundtime').value = gw.roundSeconds ?? 180;
 
+  const dr = d.draw||{};
+  document.getElementById('def-draw-rounds').value = dr.totalRounds ?? 3;
+  document.getElementById('def-draw-time').value = dr.drawSeconds ?? 75;
+
   document.getElementById('save-def-different').onclick = async ()=>{
     await db.ref('gameData/defaults/different').set({
       category: document.getElementById('def-different-category').value,
@@ -394,6 +413,13 @@ async function loadAllDefaults(){
     await db.ref('gameData/defaults/guesswho').set({
       totalRounds: parseInt(document.getElementById('def-guesswho-rounds').value)||3,
       roundSeconds: parseInt(document.getElementById('def-guesswho-roundtime').value)||0
+    });
+    toast("تم الحفظ ✅");
+  };
+  document.getElementById('save-def-draw').onclick = async ()=>{
+    await db.ref('gameData/defaults/draw').set({
+      totalRounds: parseInt(document.getElementById('def-draw-rounds').value)||3,
+      drawSeconds: parseInt(document.getElementById('def-draw-time').value)||75
     });
     toast("تم الحفظ ✅");
   };

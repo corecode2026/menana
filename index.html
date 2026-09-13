@@ -446,6 +446,20 @@ input{font-family:var(--font-body);}
   position:relative; width:100%; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
   overflow:hidden; background:radial-gradient(ellipse at 50% 30%, rgba(255,180,90,0.10), transparent 60%), linear-gradient(180deg, #0a0508, #050305);
 }
+.theater-wall{
+  position:absolute; inset:0; z-index:0;
+  background:
+    radial-gradient(ellipse at 50% 15%, rgba(140,105,70,0.16), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 2px, transparent 2px, transparent 5px),
+    linear-gradient(180deg, #2b2320, #1c1512 65%, #100b09);
+}
+.wall-graffiti{
+  position:absolute; top:9%; left:50%; transform:translateX(-50%) rotate(-2deg); z-index:1;
+  font-family:var(--font-display); font-weight:900; font-size:clamp(34px,9vw,68px); letter-spacing:3px; white-space:nowrap;
+  color:transparent; -webkit-text-stroke:2px rgba(255,214,140,0.5);
+  text-shadow:3px 3px 0 rgba(0,0,0,0.45), 0 0 22px rgba(255,190,90,0.22);
+  opacity:0.8; pointer-events:none; user-select:none;
+}
 .theater-curtain{
   position:absolute; top:0; bottom:0; width:34%; z-index:5;
   background:repeating-linear-gradient(90deg, #7a0f1f 0px, #7a0f1f 18px, #5c0916 18px, #5c0916 36px);
@@ -484,6 +498,8 @@ input{font-family:var(--font-body);}
 }
 
 .theater-eyebrow{position:relative; z-index:6; color:#ffcf8a; font-weight:700; font-size:14px; margin-bottom:6px; letter-spacing:1px;}
+.theater-foreground{position:relative; z-index:6; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:18px; width:100%; max-width:480px; padding:20px;}
+.theater-foreground .word-card{box-shadow:0 30px 70px rgba(0,0,0,0.55), 0 0 0 6px rgba(30,20,14,0.8), 0 0 40px rgba(255,190,90,0.15);}
 .count-number-3d{
   position:relative; z-index:6;
   font-family:var(--font-display); font-weight:900; font-size:150px; line-height:1; color:#ffd873;
@@ -1748,13 +1764,21 @@ function renderCountdown(round){
 }
 
 /* شاشة انطلاق بشكل مسرح لعبة "مين المختلف؟" — ستارة تُفتح، أسماء اللاعبين على لوحة الإعلانات، وعدّاد بمظهر ثلاثي الأبعاد */
+/* خلفية المسرح المشتركة: الحائط المرسوم + الأرضية + الإضاءة — تُستخدم بشاشتي العدّاد وكشف الصورة */
+function theaterBackdropHTML(){
+  return `
+    <div class="theater-wall"></div>
+    <div class="wall-graffiti">GAME KSB</div>
+    <div class="theater-spotlight"></div>
+    <div class="stage-floor"></div>`;
+}
+
 function renderTheaterCountdown(round){
   const playersList = Object.values(state.room.players).filter(p=>p.online!==false);
   appRoot().innerHTML = `<div class="theater-wrap">
-    <div class="theater-spotlight"></div>
+    ${theaterBackdropHTML()}
     <div class="theater-curtain left" id="curtain-left"></div>
     <div class="theater-curtain right" id="curtain-right"></div>
-    <div class="stage-floor"></div>
 
     <div class="marquee-names">
       ${playersList.map(p=>`<div class="marquee-badge"><span class="bulb"></span>${escapeHTML(p.name)}</div>`).join('')}
@@ -1795,11 +1819,14 @@ function renderReveal(round){
       : `<div class="emoji">${mine?mine.emoji:'❔'}</div>
          <div class="word">${mine?escapeHTML(mine.word):'...'}</div>`;
 
-  appRoot().innerHTML = `<div class="wrap"><div class="center-stage">
-    <div class="phase-eyebrow">${isUnknown?'أنت الشخص المختلف':'احفظ اللي شفته جيداً'}</div>
-    ${timerRingHTML()}
-    <div class="word-card ${isUnknown?'odd':''}" id="wcard">${innerHTML}</div>
-  </div></div>`;
+  appRoot().innerHTML = `<div class="theater-wrap">
+    ${theaterBackdropHTML()}
+    <div class="theater-foreground">
+      <div class="theater-eyebrow" style="margin-bottom:0;">${isUnknown?'أنت الشخص المختلف':'احفظ اللي شفته جيداً'}</div>
+      ${timerRingHTML()}
+      <div class="word-card ${isUnknown?'odd':''}" id="wcard">${innerHTML}</div>
+    </div>
+  </div>`;
 
   startRingCountdown(total, remaining, ()=>{
     const wcard = document.getElementById('wcard');

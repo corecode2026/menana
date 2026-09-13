@@ -1490,7 +1490,7 @@ async function startDrawMatch(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:1, drawOrder, drawerUid:drawOrder[0],
     assignments:{ [drawOrder[0]]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, revealedWord:null,
+    strokes:{}, correctGuessers:{}, revealedWord:null, clearSeq:0, finishRequested:false,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
@@ -1517,9 +1517,22 @@ async function markGuesserCorrect(uid){
   await db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(rank);
 }
 
+/* الرسّام يطلب إنهاء الجولة فوراً (بعد ما حدا خمّن صح مثلاً) — الهوست هو من ينفّذ الإنهاء الفعلي والنقاط */
+async function requestFinishDrawRound(){
+  if(!state.roomCode || !state.room.round) return;
+  if(state.uid !== state.room.round.drawerUid) return;
+  await db.ref(`rooms/${state.roomCode}/round/finishRequested`).set(true);
+}
+
+function watchDrawAsHost(round){
+  if(!state.isHost || round.phase!=="drawing") return;
+  if(round.finishRequested){ finalizeDrawRound(); }
+}
+
 async function finalizeDrawRound(){
   if(!state.isHost) return;
   const code = state.roomCode;
+  clearTimeout(advanceDrawToDrawing._t);
   const snap = await db.ref(`rooms/${code}/round`).get();
   const round = snap.val();
   if(!round || round.phase!=="drawing") return;
@@ -1537,7 +1550,7 @@ async function finalizeDrawRound(){
   if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
 
   const mine = round.assignments ? round.assignments[round.drawerUid] : null;
-  await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:''});
+  await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:'', finishRequested:false});
   await db.ref(`rooms/${code}/meta/phase`).set("result");
 }
 
@@ -1553,7 +1566,7 @@ async function nextDrawRound(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:nextIndex, drawOrder:round.drawOrder, drawerUid:nextDrawerUid,
     assignments:{ [nextDrawerUid]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, revealedWord:null,
+    strokes:{}, correctGuessers:{}, revealedWord:null, clearSeq:0, finishRequested:false,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:nextIndex});
@@ -1567,7 +1580,7 @@ async function drawFinishMatch(){
 
 function detachDrawListeners(){
   if(state.drawListeners){
-    state.drawListeners.forEach(([ref,cb])=>ref.off('child_added', cb));
+    state.drawListeners.forEach(([ref,evt,cb])=>ref.off(evt, cb));
     state.drawListeners = [];
   }
 }
@@ -1925,6 +1938,7 @@ function renderPlayingPhase(){
   // مرحلة الرسم الحيّة: نتجاهل أي إعادة رسم متكررة لنفس الجولة (كل خط رسم يسبب تحديثاً بقاعدة البيانات)
   // كي لا تُمسح اللوحة كل مرة — التحديث اللحظي للخطوط يتم عبر مستمع منفصل داخل renderDrawPhase نفسها
   if(gameType==="draw" && round.phase==="drawing"){
+    if(state.isHost) watchDrawAsHost(round);
     const key = `draw-${round.index}`;
     if(state.currentDrawKey === key) return;
     state.currentDrawKey = key;
@@ -2428,6 +2442,7 @@ function renderDrawPhase(round){
         ${["#1a1a1a","#e63946","#2a9d8f","#f4a300","#3a86ff","#ffffff"].map((c,i)=>`<button class="color-dot ${i===0?'active':''}" data-c="${c}" style="background:${c};"></button>`).join('')}
       </div>
       <button class="btn btn-secondary btn-sm" id="clear-canvas" style="margin-top:6px;">🧹 امسح الكل</button>
+      <button class="btn btn-primary btn-sm" id="finish-round-btn" style="margin-top:6px;">✅ إنهاء الجولة الآن</button>
 
       <div class="section-title" style="width:100%;">مين خمّن صح؟ (اضغط لما تسمعه يخمّن صح بصوته)</div>
       <div class="player-list" style="width:100%;">
@@ -2469,7 +2484,19 @@ function renderDrawPhase(round){
   const strokesRef = db.ref(`rooms/${state.roomCode}/round/strokes`);
   const onStroke = snap=>{ const s = snap.val(); if(s) paintSegment(s); };
   strokesRef.on('child_added', onStroke);
-  state.drawListeners.push([strokesRef, onStroke]);
+  state.drawListeners.push([strokesRef, 'child_added', onStroke]);
+
+  let lastClearSeq = round.clearSeq||0;
+  const clearRef = db.ref(`rooms/${state.roomCode}/round/clearSeq`);
+  const onClear = snap=>{
+    const v = snap.val();
+    if(v!==null && v!==undefined && v!==lastClearSeq){
+      lastClearSeq = v;
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+  };
+  clearRef.on('value', onClear);
+  state.drawListeners.push([clearRef, 'value', onClear]);
 
   if(isDrawer){
     let color = "#1a1a1a", size = 5;
@@ -2482,7 +2509,15 @@ function renderDrawPhase(round){
     });
     document.getElementById('clear-canvas').onclick = async ()=>{
       ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const newSeq = (round.clearSeq||0)+1;
+      lastClearSeq = newSeq;
+      round.clearSeq = newSeq;
+      await db.ref(`rooms/${state.roomCode}/round/clearSeq`).set(newSeq);
       await db.ref(`rooms/${state.roomCode}/round/strokes`).set(null);
+    };
+    document.getElementById('finish-round-btn').onclick = function(){
+      this.disabled = true; this.textContent = 'جارِ الإنهاء…';
+      requestFinishDrawRound();
     };
 
     let drawing=false, lastX=0, lastY=0;

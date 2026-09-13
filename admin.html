@@ -201,7 +201,8 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="section-title">🎵 بنك الأغاني</div>
-        <p class="hint">تُشغَّل اللعبة أغنية عشوائية من هذا البنك تلقائياً كل جولة، وتتوقف لحالها بعد مدة عشوائية (يحدّد الهوست المدى من غرفة الانتظار). ألصق رابط ملف صوتي مباشر (.mp3 مثلاً — من موقع استضافة صوتيات مجاني، أو مستودعك على GitHub).</p>
+        <p class="hint">تُشغَّل اللعبة أغنية عشوائية من هذا البنك تلقائياً كل جولة، وتتوقف لحالها بعد مدة عشوائية (يحدّد الهوست المدى من غرفة الانتظار). ألصق رابط ملف صوتي مباشر (.mp3 مثلاً — من موقع استضافة صوتيات مجاني، أو مستودعك على GitHub).<br><br>
+        <strong style="color:var(--amber);">تنبيه:</strong> روابط يوتيوب أو سبوتيفاي أو مشاركة Google Drive العادية <u>لا تشتغل</u> — لازم يكون رابط مباشر لملف صوتي (ينتهي عادة بـ .mp3 أو .ogg أو .wav). بعد ما تضيف الرابط، جرّب مشغّل الصوت الصغير جنبه بالأسفل — إذا اشتغل هناك، رح يشتغل باللعبة.</p>
         <div id="chairs-songs-list">جارِ التحميل…</div>
         <div class="row2" style="margin-top:12px;">
           <input id="new-song-url" placeholder="https://example.com/song.mp3">
@@ -529,8 +530,9 @@ async function loadChairsSongs(){
   if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أغاني بعد — ألصق أول رابط تحت.</p>`; return; }
   const data = snap.val();
   list.innerHTML = Object.entries(data).map(([key,s])=>`
-    <div class="word-row">
-      <div class="word" style="flex:1;">${escapeHTML(s.name||'(بدون اسم)')} <span style="color:var(--text-dim); font-size:11.5px;">${escapeHTML(s.url)}</span></div>
+    <div class="word-row" style="flex-wrap:wrap; gap:8px;">
+      <div class="word" style="flex:1; min-width:140px;">${escapeHTML(s.name||'(بدون اسم)')} <span style="color:var(--text-dim); font-size:11.5px;">${escapeHTML(s.url)}</span></div>
+      <audio controls preload="none" src="${escapeHTML(s.url)}" style="height:32px; max-width:220px;"></audio>
       <button class="del" data-key="${escapeHTML(key)}">حذف</button>
     </div>`).join('');
   list.querySelectorAll('.del').forEach(btn=>{

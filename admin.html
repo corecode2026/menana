@@ -200,15 +200,36 @@ async function renderDashboard(){
         <button class="btn btn-primary btn-sm" id="save-def-chairs">حفظ الإعدادات الافتراضية</button>
       </div>
       <div class="card">
+        <div class="section-title">☁️ إعداد الرفع (مرة وحدة)</div>
+        <p class="hint">عشان تقدر ترفع ملفات صوت/فيديو من جهازك مباشرة (بدون ما تحتاج فيزا أو خطة مدفوعة)، بنستخدم خدمة <strong>Cloudinary</strong> المجانية لتخزين الملفات. خطوات لمرة وحدة بس:</p>
+        <p class="hint">1. سجّل حساب مجاني على <a href="https://cloudinary.com/users/register_free" target="_blank" style="color:var(--violet-2);">cloudinary.com</a> (بدون بطاقة ائتمان)<br>
+        2. من لوحة التحكم تبعك هناك، انسخ <strong>Cloud name</strong> الظاهر بأعلى الصفحة<br>
+        3. روح لإعدادات الرفع: أيقونة الترس ⚙️ → Upload → انزل لقسم "Upload presets" → اضغط "Add upload preset"<br>
+        4. غيّر "Signing Mode" لـ <strong>Unsigned</strong> واحفظ، وانسخ اسم الـ preset يلي انعمل</p>
+        <div class="row2">
+          <div class="field"><label>Cloud name</label><input id="cld-name" placeholder="مثال: dxxxxxxxx"></div>
+          <div class="field"><label>Upload preset</label><input id="cld-preset" placeholder="مثال: my_unsigned_preset"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-cloudinary">حفظ إعداد الرفع</button>
+      </div>
+      <div class="card">
         <div class="section-title">🎵 بنك الأغاني</div>
-        <p class="hint">تُشغَّل اللعبة أغنية عشوائية من هذا البنك تلقائياً كل جولة، وتتوقف لحالها بعد مدة عشوائية (يحدّد الهوست المدى من غرفة الانتظار). ألصق رابط ملف صوتي مباشر (.mp3 مثلاً — من موقع استضافة صوتيات مجاني، أو مستودعك على GitHub).<br><br>
-        <strong style="color:var(--amber);">تنبيه:</strong> روابط يوتيوب أو سبوتيفاي أو مشاركة Google Drive العادية <u>لا تشتغل</u> — لازم يكون رابط مباشر لملف صوتي (ينتهي عادة بـ .mp3 أو .ogg أو .wav). بعد ما تضيف الرابط، جرّب مشغّل الصوت الصغير جنبه بالأسفل — إذا اشتغل هناك، رح يشتغل باللعبة.</p>
+        <p class="hint">تُشغَّل اللعبة أغنية عشوائية من هذا البنك تلقائياً كل جولة، وتتوقف لحالها بعد مدة عشوائية (يحدّد الهوست المدى من غرفة الانتظار).</p>
         <div id="chairs-songs-list">جارِ التحميل…</div>
-        <div class="row2" style="margin-top:12px;">
+
+        <div class="divider"></div>
+        <div class="field"><label>ارفع ملف صوت أو فيديو من جهازك</label><input type="file" id="song-file" accept="audio/*,video/*"></div>
+        <div class="field"><label>اسم الأغنية (اختياري)</label><input id="song-file-name" placeholder="مثال: أغنية الحفلة"></div>
+        <button class="btn btn-primary btn-sm" id="upload-song">⬆️ رفع الملف</button>
+        <div class="upload-status" id="song-upload-status"></div>
+
+        <div class="divider"></div>
+        <p class="hint">أو، إذا عندك رابط ملف صوتي مباشر جاهز أصلاً (اختياري):</p>
+        <div class="row2">
           <input id="new-song-url" placeholder="https://example.com/song.mp3">
           <input id="new-song-name" placeholder="اسم الأغنية (اختياري)">
         </div>
-        <button class="btn btn-secondary btn-sm" id="add-song" style="margin-top:10px;">+ إضافة أغنية</button>
+        <button class="btn btn-secondary btn-sm" id="add-song" style="margin-top:10px;">+ إضافة برابط</button>
       </div>
     </div>
 
@@ -301,6 +322,7 @@ async function renderDashboard(){
   wireImageAdd();
   await loadApiKey();
   await loadPhotoCategories();
+  await loadCloudinaryConfig();
   wireSongBank();
   await loadChairsSongs();
 }
@@ -522,6 +544,57 @@ function wireSongBank(){
     toast("تمت الإضافة ✅");
     loadChairsSongs();
   };
+
+  document.getElementById('upload-song').onclick = async ()=>{
+    const fileInput = document.getElementById('song-file');
+    const nameInput = document.getElementById('song-file-name');
+    const statusEl = document.getElementById('song-upload-status');
+    const file = fileInput.files[0];
+    if(!file){ toast("اختر ملف أولاً"); return; }
+
+    const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
+    const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
+    if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
+      toast("لازم تعبّي إعداد الرفع (Cloud name وUpload preset) فوق أولاً");
+      return;
+    }
+
+    statusEl.textContent = "جارِ الرفع…";
+    try{
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', cfg.uploadPreset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {method:'POST', body:formData});
+      const data = await res.json();
+      if(!res.ok || !data.secure_url){
+        throw new Error(data.error ? data.error.message : 'فشل الرفع');
+      }
+      await db.ref('gameData/chairsSongs').push({url:data.secure_url, name:nameInput.value.trim()});
+      statusEl.textContent = "تم الرفع ✅";
+      fileInput.value = ''; nameInput.value = '';
+      loadChairsSongs();
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = "فشل الرفع — تأكد من صحة Cloud name وUpload preset (ولازم يكون Signing Mode = Unsigned)";
+    }
+  };
+
+  document.getElementById('save-cloudinary').onclick = async ()=>{
+    const cloudName = document.getElementById('cld-name').value.trim();
+    const uploadPreset = document.getElementById('cld-preset').value.trim();
+    if(!cloudName || !uploadPreset){ toast("عبّي الحقلين الاثنين"); return; }
+    await db.ref('gameData/cloudinaryConfig').set({cloudName, uploadPreset});
+    toast("تم الحفظ ✅");
+  };
+}
+
+async function loadCloudinaryConfig(){
+  const snap = await db.ref('gameData/cloudinaryConfig').get();
+  if(snap.exists()){
+    const cfg = snap.val();
+    document.getElementById('cld-name').value = cfg.cloudName||'';
+    document.getElementById('cld-preset').value = cfg.uploadPreset||'';
+  }
 }
 
 async function loadChairsSongs(){

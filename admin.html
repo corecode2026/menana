@@ -82,6 +82,9 @@ button{font-family:var(--font-body); cursor:pointer; border:none;}
 .img-tile .img-label{position:absolute; bottom:0; inset-inline:0; background:rgba(0,0,0,0.65); color:#fff; font-size:10px; padding:4px 6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .upload-status{font-size:12.5px; color:var(--text-dim); margin-top:8px; min-height:16px;}
 .divider{height:1px; background:var(--border); margin:18px 0;}
+.segmented{display:flex; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:12px; padding:4px; gap:4px;}
+.segmented button{flex:1; padding:9px 6px; border:none; background:transparent; color:var(--text-dim); border-radius:9px; font-weight:700; font-size:13px;}
+.segmented button.active{background:var(--panel-strong); color:var(--text);}
 
 .gate{display:flex; align-items:center; justify-content:center; min-height:70vh; flex-direction:column; gap:16px;}
 .gate .card{width:100%; max-width:360px; text-align:center;}
@@ -120,7 +123,8 @@ const GAMES_META = [
   {id:"different", tab:"مين المختلف؟", defaultName:"مين المختلف؟", defaultTagline:"لعبة الذكاء والخداع — اكتشف مين ما بيعرف الكلمة"},
   {id:"chairs", tab:"الكراسي الموسيقية", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
   {id:"guesswho", tab:"شو معي؟", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"},
-  {id:"draw", tab:"خمن", defaultName:"خمن", defaultTagline:"لاعب وحد يرسم كلمة سرية على لوحة مشتركة، وباقي اللاعبين يخمنوا شو هي"}
+  {id:"draw", tab:"خمن", defaultName:"خمن", defaultTagline:"لاعب وحد يرسم كلمة سرية على لوحة مشتركة، وباقي اللاعبين يخمنوا شو هي"},
+  {id:"trivia", tab:"سين جيم", defaultName:"سين جيم", defaultTagline:"فريقين يتنافسون بالإجابة على أسئلة — جاوب صح أو خلي الفريق التاني يسرق النقطة"}
 ];
 
 function escapeHTML(str){ return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
@@ -271,6 +275,44 @@ async function renderDashboard(){
       <p class="hint">لعبة "خمن" تستخدم نفس "بنك الكلمات (احتياطي)" الموجود بالتبويب الأخير لاختيار الكلمات يلي يرسمها اللاعبون — لا حاجة لبنك منفصل.</p>
     </div>
 
+    <!-- تبويب: سين جيم -->
+    <div class="tab-panel" id="tab-trivia">
+      <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-trivia"></div></div>
+      <div class="card">
+        <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
+        <div class="row2">
+          <div class="field"><label>عدد الأسئلة بالمباراة</label><input id="def-trivia-questions" type="number" min="1" max="50"></div>
+          <div class="field"><label>وقت الإجابة (ثانية)</label><input id="def-trivia-time" type="number" min="10" max="120"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="save-def-trivia">حفظ الإعدادات الافتراضية</button>
+      </div>
+      <div class="card">
+        <div class="section-title">❓ بنك الأسئلة</div>
+        <p class="hint">كل سؤال له 4 خيارات وإجابة صحيحة وحدة. اللعبة تختار سؤالاً عشوائياً كل جولة بدون تكرار بنفس المباراة.</p>
+        <div id="trivia-questions-list">جارِ التحميل…</div>
+        <div class="divider"></div>
+        <div class="field"><label>نص السؤال</label><input id="tq-question" placeholder="مثال: شو عاصمة الأردن؟"></div>
+        <div class="row2">
+          <div class="field"><label>الخيار 1</label><input id="tq-opt-0" placeholder="عمّان"></div>
+          <div class="field"><label>الخيار 2</label><input id="tq-opt-1" placeholder="بيروت"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>الخيار 3</label><input id="tq-opt-2" placeholder="دمشق"></div>
+          <div class="field"><label>الخيار 4</label><input id="tq-opt-3" placeholder="القاهرة"></div>
+        </div>
+        <div class="field">
+          <label>أي خيار هو الصحيح؟</label>
+          <div class="segmented" id="tq-correct">
+            <button data-v="0" class="active">1</button>
+            <button data-v="1">2</button>
+            <button data-v="2">3</button>
+            <button data-v="3">4</button>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="add-question">+ إضافة سؤال</button>
+      </div>
+    </div>
+
     <!-- تبويب: الصور الحقيقية (API) -->
     <div class="tab-panel" id="tab-photos">
       <div class="card">
@@ -340,6 +382,8 @@ async function renderDashboard(){
   await loadCloudinaryConfig();
   wireSongBank();
   await loadChairsSongs();
+  wireTriviaQuestionForm();
+  await loadTriviaQuestions();
 }
 
 /* ---- الاسم والوصف لكل لعبة ---- */
@@ -393,6 +437,10 @@ async function loadAllDefaults(){
   document.getElementById('def-draw-rounds').value = dr.totalRounds ?? 3;
   document.getElementById('def-draw-time').value = dr.drawSeconds ?? 75;
 
+  const tr = d.trivia||{};
+  document.getElementById('def-trivia-questions').value = tr.totalQuestions ?? 10;
+  document.getElementById('def-trivia-time').value = tr.answerSeconds ?? 20;
+
   document.getElementById('save-def-different').onclick = async ()=>{
     await db.ref('gameData/defaults/different').set({
       category: document.getElementById('def-different-category').value,
@@ -423,6 +471,61 @@ async function loadAllDefaults(){
     });
     toast("تم الحفظ ✅");
   };
+  document.getElementById('save-def-trivia').onclick = async ()=>{
+    await db.ref('gameData/defaults/trivia').set({
+      totalQuestions: parseInt(document.getElementById('def-trivia-questions').value)||10,
+      answerSeconds: parseInt(document.getElementById('def-trivia-time').value)||20
+    });
+    toast("تم الحفظ ✅");
+  };
+}
+
+/* ---- بنك أسئلة سين جيم ---- */
+function wireTriviaQuestionForm(){
+  document.querySelectorAll('#tq-correct button').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+  document.getElementById('add-question').onclick = async ()=>{
+    const question = document.getElementById('tq-question').value.trim();
+    const options = [0,1,2,3].map(i=>document.getElementById(`tq-opt-${i}`).value.trim());
+    const correctBtn = document.querySelector('#tq-correct button.active');
+    const correctIndex = correctBtn ? parseInt(correctBtn.dataset.v,10) : 0;
+    if(!question || options.some(o=>!o)){ toast("عبّي السؤال والخيارات الأربعة كلها"); return; }
+    await db.ref('gameData/triviaQuestions').push({question, options, correctIndex});
+    document.getElementById('tq-question').value = '';
+    options.forEach((_,i)=>{ document.getElementById(`tq-opt-${i}`).value = ''; });
+    document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#tq-correct button[data-v="0"]').classList.add('active');
+    toast("تمت الإضافة ✅");
+    loadTriviaQuestions();
+  };
+}
+
+async function loadTriviaQuestions(){
+  const list = document.getElementById('trivia-questions-list');
+  const snap = await db.ref('gameData/triviaQuestions').get();
+  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أسئلة بعد — أضف أول سؤال تحت.</p>`; return; }
+  const data = snap.val();
+  list.innerHTML = Object.entries(data).map(([key,q])=>`
+    <div class="word-row" style="flex-wrap:wrap;">
+      <div class="word" style="flex:1; min-width:200px;">
+        ${escapeHTML(q.question)}
+        <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">
+          ${(q.options||[]).map((o,i)=>`${i===q.correctIndex?'✅':'▫️'} ${escapeHTML(o)}`).join(' &nbsp; ')}
+        </div>
+      </div>
+      <button class="del" data-key="${escapeHTML(key)}">حذف</button>
+    </div>`).join('');
+  list.querySelectorAll('.del').forEach(btn=>{
+    btn.onclick = async ()=>{
+      await db.ref(`gameData/triviaQuestions/${btn.dataset.key}`).set(null);
+      toast("تم حذف السؤال");
+      loadTriviaQuestions();
+    };
+  });
 }
 
 /* ---- بنك الكلمات ---- */

@@ -40,15 +40,28 @@
 html,body{height:100%;}
 body{
   background:
-    radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.11), transparent 60%),
-    radial-gradient(900px 600px at 110% 10%, rgba(34,211,238,0.07), transparent 55%),
+    radial-gradient(1100px 700px at 15% -10%, rgba(124,92,255,0.12), transparent 60%),
+    radial-gradient(900px 600px at 110% 10%, rgba(34,211,238,0.08), transparent 55%),
+    radial-gradient(800px 600px at 50% 115%, rgba(255,138,76,0.07), transparent 60%),
     var(--bg-0);
   color:var(--text);
   font-family:var(--font-body);
   min-height:100vh;
   overflow-x:hidden;
   -webkit-tap-highlight-color:transparent;
+  position:relative;
 }
+body::before{
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.4;
+  background-image:radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+.bg-blob{position:fixed; z-index:0; border-radius:50%; filter:blur(70px); pointer-events:none; animation:blobDrift 20s ease-in-out infinite;}
+.bg-blob.b1{width:360px; height:360px; top:-100px; left:-100px; background:radial-gradient(circle, rgba(124,92,255,0.45), transparent 70%); animation-delay:0s;}
+.bg-blob.b2{width:300px; height:300px; bottom:-80px; right:-80px; background:radial-gradient(circle, rgba(34,211,238,0.38), transparent 70%); animation-delay:5s;}
+.bg-blob.b3{width:260px; height:260px; top:45%; right:6%; background:radial-gradient(circle, rgba(255,138,76,0.32), transparent 70%); animation-delay:10s; display:none;}
+@media (min-width:700px){ .bg-blob.b3{display:block;} }
+@keyframes blobDrift{0%,100%{transform:translate(0,0);} 50%{transform:translate(26px,-22px);}}
 h1,h2,h3,.display{font-family:var(--font-display);}
 button{font-family:var(--font-body); cursor:pointer;}
 input{font-family:var(--font-body);}
@@ -104,7 +117,12 @@ input{font-family:var(--font-body);}
 .btn-row{display:flex; gap:12px;}
 
 /* ---- game hub (home page) ---- */
-.hub-wrap{width:100%; max-width:920px; margin:0 auto; padding:8px 4px 40px;}
+.hub-wrap{width:100%; max-width:920px; margin:0 auto; padding:8px 4px 40px; position:relative;}
+.grid-deco{position:absolute; opacity:0.16; color:var(--violet-2); pointer-events:none; animation:decoFloat 6s ease-in-out infinite; z-index:-1;}
+.grid-deco svg{width:100%; height:100%; display:block;}
+.grid-deco.g1{width:70px; height:70px; top:6%; left:-30px; animation-delay:.8s;}
+.grid-deco.g2{width:60px; height:60px; bottom:2%; right:-24px; color:#22d3ee; animation-delay:2s;}
+@media (max-width:700px){ .grid-deco{display:none;} }
 .hub-hero{
   position:relative; overflow:hidden; text-align:center; margin-bottom:36px;
   padding:44px 20px 38px; border-radius:28px;
@@ -583,6 +601,9 @@ input{font-family:var(--font-body);}
 <body>
 
 <canvas id="particles"></canvas>
+<div class="bg-blob b1"></div>
+<div class="bg-blob b2"></div>
+<div class="bg-blob b3"></div>
 <canvas id="confetti-canvas"></canvas>
 <div id="toast"></div>
 <div id="app">
@@ -1667,6 +1688,8 @@ function renderHome(){
   ${topbarHTML()}
   <div class="wrap">
     <div class="hub-wrap">
+      <div class="grid-deco g1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg></div>
+      <div class="grid-deco g2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1l1.5 2h9L18 17h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3H5z"/></svg></div>
       <div class="hub-hero">
         ${decoIcons}
         <div class="hub-header">

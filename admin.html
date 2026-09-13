@@ -280,17 +280,28 @@ async function renderDashboard(){
       <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-trivia"></div></div>
       <div class="card">
         <div class="section-title">⚙️ الإعدادات الافتراضية للغرف الجديدة</div>
-        <div class="row2">
-          <div class="field"><label>عدد الأسئلة بالمباراة</label><input id="def-trivia-questions" type="number" min="1" max="50"></div>
-          <div class="field"><label>وقت الإجابة (ثانية)</label><input id="def-trivia-time" type="number" min="10" max="120"></div>
-        </div>
+        <div class="field"><label>وقت الإجابة (ثانية)</label><input id="def-trivia-time" type="number" min="10" max="120"></div>
         <button class="btn btn-primary btn-sm" id="save-def-trivia">حفظ الإعدادات الافتراضية</button>
       </div>
       <div class="card">
-        <div class="section-title">❓ بنك الأسئلة</div>
-        <p class="hint">كل سؤال له 4 خيارات وإجابة صحيحة وحدة. اللعبة تختار سؤالاً عشوائياً كل جولة بدون تكرار بنفس المباراة.</p>
+        <div class="section-title">❓ بنك الأسئلة (لوحة فئات × نقاط)</div>
+        <p class="hint">نفس نظام سين جيم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة.</p>
         <div id="trivia-questions-list">جارِ التحميل…</div>
         <div class="divider"></div>
+        <div class="row2">
+          <div class="field"><label>الفئة</label><input id="tq-category" placeholder="مثال: رياضة"></div>
+          <div class="field">
+            <label>عدد النقاط</label>
+            <div class="segmented" id="tq-points">
+              <button data-v="100" class="active">100</button>
+              <button data-v="200">200</button>
+              <button data-v="300">300</button>
+              <button data-v="400">400</button>
+              <button data-v="500">500</button>
+              <button data-v="600">600</button>
+            </div>
+          </div>
+        </div>
         <div class="field"><label>نص السؤال</label><input id="tq-question" placeholder="مثال: شو عاصمة الأردن؟"></div>
         <div class="row2">
           <div class="field"><label>الخيار 1</label><input id="tq-opt-0" placeholder="عمّان"></div>
@@ -438,7 +449,6 @@ async function loadAllDefaults(){
   document.getElementById('def-draw-time').value = dr.drawSeconds ?? 75;
 
   const tr = d.trivia||{};
-  document.getElementById('def-trivia-questions').value = tr.totalQuestions ?? 10;
   document.getElementById('def-trivia-time').value = tr.answerSeconds ?? 20;
 
   document.getElementById('save-def-different').onclick = async ()=>{
@@ -473,7 +483,6 @@ async function loadAllDefaults(){
   };
   document.getElementById('save-def-trivia').onclick = async ()=>{
     await db.ref('gameData/defaults/trivia').set({
-      totalQuestions: parseInt(document.getElementById('def-trivia-questions').value)||10,
       answerSeconds: parseInt(document.getElementById('def-trivia-time').value)||20
     });
     toast("تم الحفظ ✅");
@@ -488,13 +497,22 @@ function wireTriviaQuestionForm(){
       btn.classList.add('active');
     };
   });
+  document.querySelectorAll('#tq-points button').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('#tq-points button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
   document.getElementById('add-question').onclick = async ()=>{
+    const category = document.getElementById('tq-category').value.trim();
+    const pointsBtn = document.querySelector('#tq-points button.active');
+    const points = pointsBtn ? parseInt(pointsBtn.dataset.v,10) : 100;
     const question = document.getElementById('tq-question').value.trim();
     const options = [0,1,2,3].map(i=>document.getElementById(`tq-opt-${i}`).value.trim());
     const correctBtn = document.querySelector('#tq-correct button.active');
     const correctIndex = correctBtn ? parseInt(correctBtn.dataset.v,10) : 0;
-    if(!question || options.some(o=>!o)){ toast("عبّي السؤال والخيارات الأربعة كلها"); return; }
-    await db.ref('gameData/triviaQuestions').push({question, options, correctIndex});
+    if(!category || !question || options.some(o=>!o)){ toast("عبّي الفئة والسؤال والخيارات الأربعة كلها"); return; }
+    await db.ref('gameData/triviaQuestions').push({category, points, question, options, correctIndex});
     document.getElementById('tq-question').value = '';
     options.forEach((_,i)=>{ document.getElementById(`tq-opt-${i}`).value = ''; });
     document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
@@ -509,16 +527,34 @@ async function loadTriviaQuestions(){
   const snap = await db.ref('gameData/triviaQuestions').get();
   if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أسئلة بعد — أضف أول سؤال تحت.</p>`; return; }
   const data = snap.val();
-  list.innerHTML = Object.entries(data).map(([key,q])=>`
-    <div class="word-row" style="flex-wrap:wrap;">
-      <div class="word" style="flex:1; min-width:200px;">
-        ${escapeHTML(q.question)}
-        <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">
-          ${(q.options||[]).map((o,i)=>`${i===q.correctIndex?'✅':'▫️'} ${escapeHTML(o)}`).join(' &nbsp; ')}
-        </div>
+  // نجمّعها حسب الفئة عشان يسهل تشوف نواقص اللوحة (كل فئة لازم يكون فيها كذا مستوى نقاط)
+  const byCategory = {};
+  Object.entries(data).forEach(([key,q])=>{
+    const cat = q.category || 'عام';
+    (byCategory[cat] = byCategory[cat]||[]).push({key, ...q});
+  });
+  list.innerHTML = Object.entries(byCategory).map(([cat, qs])=>`
+    <div class="cat-block open">
+      <div class="cat-head">
+        <div><span class="name">${escapeHTML(cat)}</span><span class="count">(${qs.length} سؤال)</span></div>
+        <span class="toggle-arrow">▾</span>
       </div>
-      <button class="del" data-key="${escapeHTML(key)}">حذف</button>
+      <div class="cat-body">
+        ${qs.sort((a,b)=>(a.points||0)-(b.points||0)).map(q=>`
+          <div class="word-row" style="flex-wrap:wrap;">
+            <div class="word" style="flex:1; min-width:200px;">
+              <strong style="color:var(--violet-2);">${q.points||100} نقطة</strong> — ${escapeHTML(q.question)}
+              <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">
+                ${(q.options||[]).map((o,i)=>`${i===q.correctIndex?'✅':'▫️'} ${escapeHTML(o)}`).join(' &nbsp; ')}
+              </div>
+            </div>
+            <button class="del" data-key="${escapeHTML(q.key)}">حذف</button>
+          </div>`).join('')}
+      </div>
     </div>`).join('');
+  list.querySelectorAll('.cat-head').forEach(head=>{
+    head.addEventListener('click', ()=> head.closest('.cat-block').classList.toggle('open'));
+  });
   list.querySelectorAll('.del').forEach(btn=>{
     btn.onclick = async ()=>{
       await db.ref(`gameData/triviaQuestions/${btn.dataset.key}`).set(null);

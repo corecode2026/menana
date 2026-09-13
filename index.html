@@ -837,7 +837,7 @@ function route_afterAuthChange(){
 function defaultSettingsFor(gameId, maxPlayers){
   let base;
   if(gameId==="chairs"){
-    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, musicRange:"medium", soundOn:true};
+    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, musicRange:"medium", totalRounds:3, soundOn:true};
   } else if(gameId==="guesswho"){
     base = {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
   } else {
@@ -1080,12 +1080,12 @@ async function startChairsMatch(){
   const code = state.roomCode;
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   if(players.length < 3){ toast("تحتاج 3 لاعبين على الأقل"); return; }
-  const activePlayers = players.map(([uid])=>uid);
+  const allPlayers = players.map(([uid])=>uid);
 
   await db.ref(`rooms/${code}/round`).set({
     type:"chairs", index:1,
-    activePlayers, eliminatedOrder:[], lastEliminated:[],
-    taps:{}, phase:"countdown", phaseEndAt: Date.now()+3200, matchOver:false
+    allPlayers, roundWinner:null, slowestThisRound:[],
+    taps:{}, phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
   setTimeout(()=>advanceChairsToMusic(), 3200);
@@ -1134,46 +1134,40 @@ async function submitChairsTap(){
   const round = state.room.round;
   const code = state.roomCode;
   if(!round || round.phase!=="tap") return;
-  if(!round.activePlayers.includes(state.uid)) return;
+  if(!round.allPlayers.includes(state.uid)) return;
   if(round.taps && round.taps[state.uid]) return;
   await db.ref(`rooms/${code}/round/taps/${state.uid}`).set(firebase.database.ServerValue.TIMESTAMP);
   playSound('tick');
   if(state.isHost){
     const snap = await db.ref(`rooms/${code}/round`).get();
     const r = snap.val();
-    if(Object.keys(r.taps||{}).length >= r.activePlayers.length){
+    if(Object.keys(r.taps||{}).length >= r.allPlayers.length){
       clearTimeout(stopMusicAndStartTap._t2);
       finalizeChairsRound(r);
     }
   }
 }
 
+/* الأسرع بالضغط كل جولة يفوز بنقطة؛ الأبطأ (حسب الإعداد) يظهر فقط كطرافة بدون إقصاء فعلي — الجميع يلعبون كل الجولات */
 async function finalizeChairsRound(round){
   if(!state.isHost) return;
   const code = state.roomCode;
   const settings = state.room.settings;
   const taps = round.taps||{};
-  const active = round.activePlayers;
-  const ranked = active.map(uid=>({uid, t: (taps[uid]!==undefined && taps[uid]!==null) ? taps[uid] : Infinity}))
-    .sort((a,b)=>a.t-b.t); // الأسرع أولاً (أأمن)، من لم يضغط إطلاقاً يُعتبر الأبطأ
+  const all = round.allPlayers;
+  const ranked = all.map(uid=>({uid, t: (taps[uid]!==undefined && taps[uid]!==null) ? taps[uid] : Infinity}))
+    .sort((a,b)=>a.t-b.t); // الأسرع أولاً
 
-  const eliminateCount = Math.min(settings.eliminatePerRound||1, active.length-1);
-  const eliminated = eliminateCount>0 ? ranked.slice(active.length-eliminateCount).map(x=>x.uid) : [];
-  const newActive = active.filter(uid=>!eliminated.includes(uid));
+  const roundWinner = ranked[0] && ranked[0].t!==Infinity ? ranked[0].uid : null;
+  const slowCount = Math.min(settings.eliminatePerRound||1, all.length-1);
+  const slowestThisRound = slowCount>0 ? ranked.slice(all.length-slowCount).map(x=>x.uid) : [];
 
-  // نقاط: كل من يُقصى يحصل على نقاط بحسب عدد من بقي معه بالجولة (البقاء أطول = نقاط أكثر)
-  const scoreUpdates = {};
   const players = state.room.players;
-  eliminated.forEach(uid=>{
-    scoreUpdates[`players/${uid}/score`] = (players[uid].score||0) + active.length*10;
-  });
-  if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
+  if(roundWinner){
+    await db.ref(`rooms/${code}/players/${roundWinner}/score`).set((players[roundWinner].score||0) + 1);
+  }
 
-  const matchOver = newActive.length<=1;
-  await db.ref(`rooms/${code}/round`).update({
-    phase:"result", lastEliminated:eliminated, activePlayers:newActive,
-    eliminatedOrder:(round.eliminatedOrder||[]).concat(eliminated), matchOver
-  });
+  await db.ref(`rooms/${code}/round`).update({phase:"result", roundWinner, slowestThisRound});
   await db.ref(`rooms/${code}/meta/phase`).set("result");
 }
 
@@ -1182,7 +1176,8 @@ async function nextChairsRound(){
   const code = state.roomCode;
   const round = state.room.round;
   await db.ref(`rooms/${code}/round`).update({
-    index:(round.index||1)+1, phase:"countdown", phaseEndAt: Date.now()+3200, taps:{}, lastEliminated:[]
+    index:(round.index||1)+1, phase:"countdown", phaseEndAt: Date.now()+3200,
+    taps:{}, roundWinner:null, slowestThisRound:[]
   });
   await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:(round.index||1)+1});
   setTimeout(()=>advanceChairsToMusic(), 3200);
@@ -1190,14 +1185,7 @@ async function nextChairsRound(){
 
 async function chairsFinishMatch(){
   if(!state.isHost) return;
-  const code = state.roomCode;
-  const round = state.room.round;
-  const winnerUid = round.activePlayers[0];
-  if(winnerUid){
-    const players = state.room.players;
-    await db.ref(`rooms/${code}/players/${winnerUid}/score`).set((players[winnerUid].score||0) + Object.keys(players).length*15);
-  }
-  await db.ref(`rooms/${code}/meta`).update({status:"finished", phase:"finished"});
+  await db.ref(`rooms/${state.roomCode}/meta`).update({status:"finished", phase:"finished"});
 }
 
 /* =========================================================================
@@ -1507,7 +1495,13 @@ function renderWaitingRoom(){
 
   const settingsHTML = gameType==="chairs" ? `
         <div class="field">
-          <label>عدد المُقصين في كل جولة</label>
+          <label>عدد الجولات</label>
+          <div class="segmented" id="set-rounds">
+            ${[1,3,5,10].map(n=>`<button data-v="${n}" class="${settings.totalRounds===n?'active':''}">${n}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>عدد "الأبطأ" الظاهرين كل جولة (للطرافة فقط)</label>
           <div class="segmented" id="set-eliminate">
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
           </div>
@@ -1518,6 +1512,7 @@ function renderWaitingRoom(){
             ${[["short","قصيرة"],["medium","متوسطة"],["long","طويلة"],["random","عشوائية تماماً"]].map(([v,label])=>`<button data-v="${v}" class="${(settings.musicRange||'medium')===v?'active':''}">${label}</button>`).join('')}
           </div>
         </div>
+        <div class="hint-row">${svgIcon('info')}الأسرع بالضغط كل جولة ياخد نقطة — الجميع يلعبون كل الجولات، ما في إقصاء فعلي</div>
         <div class="hint-row">${svgIcon('info')}${CHAIRS_SONGS.length ? `${CHAIRS_SONGS.length} أغنية بالبنك — بتُختار عشوائياً كل جولة` : 'ما في أغاني مضافة بعد — رح تشتغل اللعبة بدون صوت. أضف أغاني من لوحة التحكم'}</div>` : gameType==="guesswho" ? `
         <div class="field">
           <label>تصنيف الصور</label>
@@ -1610,6 +1605,7 @@ function renderWaitingRoom(){
 
   if(isHost){
     if(gameType==="chairs"){
+      document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
       document.getElementById('set-eliminate').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/eliminatePerRound`).set(parseInt(e.target.dataset.v)); };
       document.getElementById('set-musicrange').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/musicRange`).set(e.target.dataset.v); };
     } else if(gameType==="guesswho"){
@@ -1807,16 +1803,11 @@ function renderResults(round){
 
 /* ---- الكراسي الموسيقية: شاشات المراحل ---- */
 function renderChairsMusic(round){
-  const players = round.activePlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
+  const players = round.allPlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="phase-eyebrow">الجولة ${round.index}</div>
-    <div class="eq-bars">${'<div class="bar"></div>'.repeat(5)}</div>
-    <h2 style="font-size:20px;">الموسيقى تشتغل 🎵</h2>
-    ${round.songName ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}${escapeHTML(round.songName)}</div>` : ''}
-    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}استعدوا للجلوس بسرعة لحظة ما تتوقف — ما حدا بيعرف الوقت غير الحظ!</div>
-    <button class="btn btn-secondary btn-sm" id="tap-to-play" style="display:none; margin-top:6px;">🔊 اضغط لتشغيل الصوت</button>
 
-    <div class="section-title" style="width:100%;">اللاعبون المتبقون (${players.length})</div>
+    <div class="section-title" style="width:100%;">اللاعبون (${players.length})</div>
     <div class="player-list" style="width:100%;">
       ${players.map(([uid,p])=>`
         <div class="player-card">
@@ -1825,8 +1816,14 @@ function renderChairsMusic(round){
         </div>`).join('')}
     </div>
 
-    <div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}الموسيقى رح توقف لحالها بلحظة عشوائية…</div>
-    ${!round.activePlayers.includes(state.uid) ? `<div class="spectator-note">أنت مُقصى من هذه الجولة — تابع اللعبة كمشاهد 👀</div>` : ''}
+    <div class="eq-bars">${'<div class="bar"></div>'.repeat(5)}</div>
+    <h2 style="font-size:20px;">الموسيقى تشتغل 🎵</h2>
+    ${round.songName ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}${escapeHTML(round.songName)}</div>` : ''}
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}استعدوا للجلوس بسرعة لحظة ما تتوقف — ما حدا بيعرف الوقت غير الحظ!</div>
+    <button class="btn btn-secondary btn-sm" id="tap-to-play" style="display:none; margin-top:6px;">🔊 اضغط لتشغيل الصوت</button>
+    <div class="warn-msg" id="audio-warn"></div>
+
+    <div class="hint-row" style="justify-content:center; margin-top:10px;">${svgIcon('info')}الموسيقى رح توقف لحالها بلحظة عشوائية…</div>
   </div></div>`;
 
   if(round.songUrl){
@@ -1834,12 +1831,19 @@ function renderChairsMusic(round){
     audio.loop = true;
     state.chairsAudio = audio;
     const tryPlayBtn = document.getElementById('tap-to-play');
-    audio.play().catch(()=>{
+    const warnEl = document.getElementById('audio-warn');
+    const showFallback = ()=>{
+      if(tryPlayBtn) tryPlayBtn.style.display = 'inline-flex';
+    };
+    audio.addEventListener('error', ()=>{
+      console.error('[chairs audio] failed to load:', round.songUrl);
+      if(warnEl) warnEl.textContent = 'تعذر تحميل الأغنية — تأكد إن الرابط ملف صوتي مباشر';
+    });
+    audio.play().catch(err=>{
       // بعض المتصفحات (خصوصاً بالموبايل) بتمنع تشغيل الصوت التلقائي — نعرض زر تشغيل يدوي بديل
-      if(tryPlayBtn){
-        tryPlayBtn.style.display = 'inline-flex';
-        tryPlayBtn.onclick = ()=>{ audio.play().catch(()=>{}); tryPlayBtn.style.display='none'; };
-      }
+      console.warn('[chairs audio] autoplay blocked:', err);
+      showFallback();
+      if(tryPlayBtn) tryPlayBtn.onclick = ()=>{ audio.play().catch(()=>{}); tryPlayBtn.style.display='none'; };
     });
   }
 }
@@ -1850,61 +1854,71 @@ function stopLocalChairsAudio(){
 }
 
 function renderChairsTap(round){
-  const players = round.activePlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
+  const players = round.allPlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
   const taps = round.taps||{};
-  const amIActive = round.activePlayers.includes(state.uid);
   const iTapped = !!taps[state.uid];
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
-    <h2 style="font-size:24px;">🪑 اجلس بسرعة!</h2>
-    ${amIActive ? `
-      <button class="tap-btn" id="tap-btn" ${iTapped?'disabled':''}>${iTapped?'تم! ✅':'اضغط الآن'}</button>
-    ` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}أنت خارج هذه الجولة — راقب اللاعبين</div>`}
-
-    <div class="taps-log">
+    <div class="section-title" style="width:100%;">اللاعبون (${players.length})</div>
+    <div class="player-list" style="width:100%;">
       ${players.map(([uid,p])=>`
-        <div class="tap-chip ${taps[uid]?'':'waiting'}">${taps[uid]?svgIcon('check'):''}${escapeHTML(p.name)}</div>`).join('')}
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+          <div class="name" style="flex:1;">${escapeHTML(p.name)}</div>
+          ${taps[uid] ? svgIcon('check') : ''}
+        </div>`).join('')}
     </div>
+
+    <h2 style="font-size:24px; margin-top:6px;">🪑 اجلس بسرعة!</h2>
+    <button class="tap-btn" id="tap-btn" ${iTapped?'disabled':''}>${iTapped?'تم! ✅':'اضغط الآن'}</button>
   </div></div>`;
 
-  if(amIActive && !iTapped){
+  if(!iTapped){
     document.getElementById('tap-btn').onclick = submitChairsTap;
   }
 }
 
 function renderChairsResult(round){
   const players = state.room.players;
-  const eliminated = round.lastEliminated||[];
-  const remaining = round.activePlayers||[];
+  const winnerUid = round.roundWinner;
+  const slowest = round.slowestThisRound||[];
+  const matchOver = (round.index||1) >= (state.room.settings.totalRounds||3);
 
-  if(eliminated.length) playSound('lose');
+  if(winnerUid){ playSound('win'); } else { playSound('lose'); }
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="phase-eyebrow">نتيجة الجولة ${round.index}</div>
-    ${eliminated.length ? `
+
+    ${winnerUid ? `
+      <div class="result-banner result-win">
+        🏆 ${escapeHTML(players[winnerUid]?players[winnerUid].name:'')} فاز بالجولة! (+1 نقطة)
+      </div>` : `<div class="result-banner">ما حدا ضغط بالوقت! 😅 ولا نقطة هالجولة</div>`}
+
+    ${slowest.length ? `
+      <div class="section-title" style="width:100%;">الأبطأ هالجولة 🐢</div>
       <div style="width:100%;">
-        ${eliminated.map(uid=>`
+        ${slowest.map(uid=>`
           <div class="out-card">
             <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(players[uid]?players[uid].name:''))}</div>
             <div class="name">${escapeHTML(players[uid]?players[uid].name:'')}</div>
-            <div class="eliminated-tag">أُقصي 🚫</div>
           </div>`).join('')}
-      </div>` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}لم يُقصَ أحد هذه الجولة</div>`}
+      </div>` : ''}
 
-    <div class="section-title" style="width:100%;">${round.matchOver?'الفائز':'اللاعبون المتبقون'} (${remaining.length})</div>
+    <div class="section-title" style="width:100%;">🏅 الترتيب الحالي</div>
     <div class="player-list" style="width:100%;">
-      ${remaining.map(uid=>`
+      ${round.allPlayers.slice().sort((a,b)=>((players[b]&&players[b].score)||0)-((players[a]&&players[a].score)||0)).map(uid=>`
         <div class="player-card">
           <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(players[uid]?players[uid].name:''))}</div>
-          <div class="name">${escapeHTML(players[uid]?players[uid].name:'')}</div>
+          <div class="name" style="flex:1;">${escapeHTML(players[uid]?players[uid].name:'')}</div>
+          <div class="lb-score">${(players[uid]&&players[uid].score)||0}</div>
         </div>`).join('')}
     </div>
 
-    ${state.isHost ? `<button class="btn btn-primary" id="chairs-next" style="margin-top:20px;">${svgIcon('play')}${round.matchOver?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
+    ${state.isHost ? `<button class="btn btn-primary" id="chairs-next" style="margin-top:20px;">${svgIcon('play')}${matchOver?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
       : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}بانتظار الهوست للمتابعة…</div>`}
   </div></div>`;
 
-  if(state.isHost) document.getElementById('chairs-next').onclick = round.matchOver ? chairsFinishMatch : nextChairsRound;
+  if(state.isHost) document.getElementById('chairs-next').onclick = matchOver ? chairsFinishMatch : nextChairsRound;
 }
 
 /* ---- شو معي؟: شاشات المراحل ---- */

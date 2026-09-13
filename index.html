@@ -772,15 +772,15 @@ async function signInWithGoogle(){
     toast("تم تسجيل الدخول ✅");
     route_afterAuthChange();
   }catch(err){
-    console.error(err);
+    console.error('[auth] signInWithGoogle error ->', err);
     if(err.code === 'auth/credential-already-in-use'){
       try{
         if(mobile){ await auth.signInWithRedirect(googleProvider); return; }
         await auth.signInWithPopup(googleProvider); await ensureProfileName(auth.currentUser); route_afterAuthChange();
       }
-      catch(e2){ toast("تعذر تسجيل الدخول"); }
+      catch(e2){ console.error('[auth] fallback error ->', e2); toast(`تعذر تسجيل الدخول: ${e2.code||''}`); }
     } else if(err.code !== 'auth/popup-closed-by-user'){
-      toast("تعذر تسجيل الدخول بجوجل");
+      toast(`تعذر تسجيل الدخول: ${err.code||'خطأ غير معروف'}`);
     }
   }
 }
@@ -789,12 +789,22 @@ async function signInWithGoogle(){
 async function checkGoogleRedirectResult(){
   try{
     const result = await auth.getRedirectResult();
+    console.log('[auth] getRedirectResult ->', result);
     if(result && result.user){
       await ensureProfileName(result.user);
       toast("تم تسجيل الدخول ✅");
     }
   }catch(err){
-    if(err && err.code && err.code !== 'auth/credential-already-in-use'){ console.error(err); }
+    console.error('[auth] getRedirectResult error ->', err);
+    if(err && err.code === 'auth/credential-already-in-use'){
+      // الحساب مرتبط أصلاً بمستخدم آخر — نسجّل دخول مباشرة بنفس حساب جوجل بدل الربط
+      try{
+        const cred = firebase.auth.GoogleAuthProvider.credentialFromError(err);
+        if(cred){ await auth.signInWithCredential(cred); toast("تم تسجيل الدخول ✅"); }
+      }catch(e2){ console.error('[auth] fallback sign-in error ->', e2); }
+    } else if(err && err.code){
+      toast(`تعذر تسجيل الدخول: ${err.code}`);
+    }
   }
 }
 

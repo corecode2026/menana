@@ -303,6 +303,15 @@ async function renderDashboard(){
           </div>
         </div>
         <div class="field"><label>نص السؤال</label><input id="tq-question" placeholder="مثال: شو عاصمة الأردن؟"></div>
+        <div class="field">
+          <label>نوع السؤال</label>
+          <div class="segmented" id="tq-mediatype">
+            <button data-v="none" class="active">نص فقط</button>
+            <button data-v="image">صورة</button>
+            <button data-v="video">فيديو</button>
+          </div>
+        </div>
+        <div class="field" id="tq-media-field" style="display:none;"><label>رابط الصورة/الفيديو</label><input id="tq-media-url" placeholder="https://example.com/photo.jpg"></div>
         <div class="row2">
           <div class="field"><label>الخيار 1</label><input id="tq-opt-0" placeholder="عمّان"></div>
           <div class="field"><label>الخيار 2</label><input id="tq-opt-1" placeholder="بيروت"></div>
@@ -503,20 +512,35 @@ function wireTriviaQuestionForm(){
       btn.classList.add('active');
     };
   });
+  document.querySelectorAll('#tq-mediatype button').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('#tq-mediatype button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tq-media-field').style.display = btn.dataset.v==="none" ? 'none' : 'block';
+    };
+  });
   document.getElementById('add-question').onclick = async ()=>{
     const category = document.getElementById('tq-category').value.trim();
     const pointsBtn = document.querySelector('#tq-points button.active');
     const points = pointsBtn ? parseInt(pointsBtn.dataset.v,10) : 100;
     const question = document.getElementById('tq-question').value.trim();
+    const mediaTypeBtn = document.querySelector('#tq-mediatype button.active');
+    const mediaType = mediaTypeBtn ? mediaTypeBtn.dataset.v : 'none';
+    const mediaUrl = document.getElementById('tq-media-url').value.trim();
     const options = [0,1,2,3].map(i=>document.getElementById(`tq-opt-${i}`).value.trim());
     const correctBtn = document.querySelector('#tq-correct button.active');
     const correctIndex = correctBtn ? parseInt(correctBtn.dataset.v,10) : 0;
     if(!category || !question || options.some(o=>!o)){ toast("عبّي الفئة والسؤال والخيارات الأربعة كلها"); return; }
-    await db.ref('gameData/triviaQuestions').push({category, points, question, options, correctIndex});
+    if(mediaType!=="none" && !mediaUrl){ toast("الصق رابط الصورة أو الفيديو"); return; }
+    await db.ref('gameData/triviaQuestions').push({category, points, question, mediaType, mediaUrl: mediaType==="none"?'':mediaUrl, options, correctIndex});
     document.getElementById('tq-question').value = '';
+    document.getElementById('tq-media-url').value = '';
     options.forEach((_,i)=>{ document.getElementById(`tq-opt-${i}`).value = ''; });
     document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
     document.querySelector('#tq-correct button[data-v="0"]').classList.add('active');
+    document.querySelectorAll('#tq-mediatype button').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#tq-mediatype button[data-v="none"]').classList.add('active');
+    document.getElementById('tq-media-field').style.display = 'none';
     toast("تمت الإضافة ✅");
     loadTriviaQuestions();
   };
@@ -543,7 +567,7 @@ async function loadTriviaQuestions(){
         ${qs.sort((a,b)=>(a.points||0)-(b.points||0)).map(q=>`
           <div class="word-row" style="flex-wrap:wrap;">
             <div class="word" style="flex:1; min-width:200px;">
-              <strong style="color:var(--violet-2);">${q.points||100} نقطة</strong> — ${escapeHTML(q.question)}
+              <strong style="color:var(--violet-2);">${q.points||100} نقطة</strong> ${q.mediaType==='image'?'🖼️':q.mediaType==='video'?'🎬':''} — ${escapeHTML(q.question)}
               <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">
                 ${(q.options||[]).map((o,i)=>`${i===q.correctIndex?'✅':'▫️'} ${escapeHTML(o)}`).join(' &nbsp; ')}
               </div>

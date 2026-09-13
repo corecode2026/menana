@@ -243,6 +243,19 @@ input{font-family:var(--font-body);}
 .policy-content h3{font-family:var(--font-display); font-size:16px; margin:18px 0 8px; color:var(--text);}
 .policy-content p{margin-bottom:6px;}
 
+/* ---- لعبة "خمن": لوحة الرسم ---- */
+.canvas-wrap{width:100%; border-radius:16px; overflow:hidden; border:2px solid var(--border); background:#fff; box-shadow:0 20px 50px rgba(0,0,0,0.35);}
+#draw-canvas{width:100%; height:auto; display:block; touch-action:none; cursor:crosshair;}
+.color-row{display:flex; gap:9px; margin-top:12px; flex-wrap:wrap; justify-content:center;}
+.color-dot{width:30px; height:30px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); transition:transform .12s ease;}
+.color-dot:active, .color-dot.active{transform:scale(1.15); border-color:var(--violet-2);}
+.draw-word-banner{
+  background:rgba(61,220,151,0.15); border:1px solid rgba(61,220,151,0.4); color:var(--success);
+  padding:10px 20px; border-radius:12px; font-weight:800; font-size:17px; text-align:center;
+}
+.guess-btn{transition:background .15s ease;}
+.guess-btn:not([disabled]):hover{background:rgba(124,92,255,0.14);}
+
 /* ---- شريط تحكم عائم أثناء اللعب (مغادرة / إنهاء للجميع) ---- */
 .game-controls-bar{position:fixed; top:14px; inset-inline-start:14px; z-index:60; display:flex; gap:8px;}
 .gc-btn{
@@ -608,6 +621,12 @@ const GAMES = [
     minPlayers:2, fixedPlayers:2,
     iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6" fill="#fff" stroke="none"/><path d="M3 15.5l4.5-4.2a2 2 0 0 1 2.7 0L15 15"/><path d="M13.5 13l1.7-1.6a2 2 0 0 1 2.7 0L21 14"/></svg>',
     grad:"linear-gradient(160deg, #3f9d8f 0%, #b8577a 100%)"
+  },
+  {
+    id:"draw", name:"خمن", tagline:"لاعب وحد يرسم كلمة سرية على لوحة مشتركة، وباقي اللاعبين يخمنوا شو هي",
+    minPlayers:3,
+    iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
+    grad:"linear-gradient(160deg, #3aa17e 0%, #1f6f8b 100%)"
   }
 ];
 function gameById(id){ return GAMES.find(g=>g.id===id) || GAMES[0]; }
@@ -799,6 +818,8 @@ const state = {
   soundOn: true,
   listeners: [],
   chairsAudioEl: null,  // عنصر صوت دائم يُفعَّل بضغطة حقيقية بغرفة الانتظار، ويُعاد استخدامه كل جولة لتفادي منع المتصفح للتشغيل التلقائي
+  drawListeners: [],    // مستمعو لوحة الرسم اللحظية (child_added) — تُفصل عند مغادرة مرحلة الرسم
+  currentDrawKey: null  // يمنع إعادة رسم شاشة الرسم بالكامل مع كل ضغطة قلم (تحديث لحظي فقط عبر المستمع أعلاه)
 };
 
 /* =========================================================================
@@ -958,6 +979,8 @@ function defaultSettingsFor(gameId, maxPlayers){
     base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, musicRange:"medium", totalRounds:3, soundOn:true};
   } else if(gameId==="guesswho"){
     base = {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
+  } else if(gameId==="draw"){
+    base = {minPlayers:3, maxPlayers: maxPlayers||8, category:"عشوائي", drawSeconds:75, totalRounds:3, soundOn:true};
   } else {
     base = {
       minPlayers:3, maxPlayers: maxPlayers||8,
@@ -1009,7 +1032,7 @@ function leaveRoom(){
   if(state.roomCode && state.uid){
     db.ref(`rooms/${state.roomCode}/players/${state.uid}/online`).set(false);
   }
-  detachListeners(); clearTimer(); stopLocalChairsAudio();
+  detachListeners(); clearTimer(); stopLocalChairsAudio(); detachDrawListeners(); state.currentDrawKey = null;
   state.roomCode=null; state.room=null; state.isHost=false; state.myAssignment=null; state.hasVoted=false; state.myVoteTarget=null;
   renderHome();
 }
@@ -1449,6 +1472,106 @@ async function guessFinishMatch(){
   await db.ref(`rooms/${state.roomCode}/meta`).update({status:"finished", phase:"finished"});
 }
 
+/* =========================================================================
+   لعبة "خمن" — لاعب واحد يرسم كلمة سرية على لوحة مشتركة (تتزامن لحظياً عبر
+   Firebase)، وباقي اللاعبين يخمنون بصوتهم عبر المكالمة؛ الرسّام يعلّم من خمّن صح.
+   ========================================================================= */
+function shuffleArr(arr){ return [...arr].sort(()=>Math.random()-0.5); }
+
+async function startDrawMatch(){
+  if(!state.isHost || !state.room) return;
+  const code = state.roomCode;
+  const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
+  if(players.length < 3){ toast("تحتاج 3 لاعبين على الأقل"); return; }
+  const drawOrder = shuffleArr(players.map(([uid])=>uid));
+  const settings = state.room.settings;
+  const word = pickWordPair(settings.category||"عشوائي");
+
+  await db.ref(`rooms/${code}/round`).set({
+    type:"draw", index:1, drawOrder, drawerUid:drawOrder[0],
+    assignments:{ [drawOrder[0]]: {word:word.main, emoji:word.mainEmoji} },
+    strokes:{}, correctGuessers:{}, revealedWord:null,
+    phase:"countdown", phaseEndAt: Date.now()+3200
+  });
+  await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
+  setTimeout(()=>advanceDrawToDrawing(), 3200);
+}
+
+async function advanceDrawToDrawing(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const seconds = state.room.settings.drawSeconds||75;
+  await db.ref(`rooms/${code}/round`).update({phase:"drawing", phaseEndAt: Date.now()+seconds*1000});
+  await db.ref(`rooms/${code}/meta/phase`).set("drawing");
+  clearTimeout(advanceDrawToDrawing._t);
+  advanceDrawToDrawing._t = setTimeout(()=>finalizeDrawRound(), seconds*1000+150);
+}
+
+/* الرسّام يعلّم لاعباً على أنه خمّن صح (سمعه بصوته عالمكالمة) */
+async function markGuesserCorrect(uid){
+  if(!state.roomCode || !state.room.round) return;
+  const round = state.room.round;
+  if(round.phase!=="drawing") return;
+  if(round.correctGuessers && round.correctGuessers[uid]!==undefined) return;
+  const rank = Object.keys(round.correctGuessers||{}).length + 1;
+  await db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(rank);
+}
+
+async function finalizeDrawRound(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="drawing") return;
+  const players = state.room.players;
+  const guessers = round.correctGuessers||{};
+  const scoreUpdates = {};
+  Object.entries(guessers).forEach(([uid,rank])=>{
+    const pts = Math.max(100-20*(rank-1), 20);
+    scoreUpdates[`players/${uid}/score`] = (players[uid].score||0)+pts;
+  });
+  if(Object.keys(guessers).length){
+    const drawerBonus = 20*Object.keys(guessers).length;
+    scoreUpdates[`players/${round.drawerUid}/score`] = (players[round.drawerUid].score||0)+drawerBonus;
+  }
+  if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
+
+  const mine = round.assignments ? round.assignments[round.drawerUid] : null;
+  await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:''});
+  await db.ref(`rooms/${code}/meta/phase`).set("result");
+}
+
+async function nextDrawRound(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const round = state.room.round;
+  const settings = state.room.settings;
+  const nextIndex = (round.index||1)+1;
+  const nextDrawerUid = round.drawOrder[(nextIndex-1) % round.drawOrder.length];
+  const word = pickWordPair(settings.category||"عشوائي");
+
+  await db.ref(`rooms/${code}/round`).set({
+    type:"draw", index:nextIndex, drawOrder:round.drawOrder, drawerUid:nextDrawerUid,
+    assignments:{ [nextDrawerUid]: {word:word.main, emoji:word.mainEmoji} },
+    strokes:{}, correctGuessers:{}, revealedWord:null,
+    phase:"countdown", phaseEndAt: Date.now()+3200
+  });
+  await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:nextIndex});
+  setTimeout(()=>advanceDrawToDrawing(), 3200);
+}
+
+async function drawFinishMatch(){
+  if(!state.isHost) return;
+  await db.ref(`rooms/${state.roomCode}/meta`).update({status:"finished", phase:"finished"});
+}
+
+function detachDrawListeners(){
+  if(state.drawListeners){
+    state.drawListeners.forEach(([ref,cb])=>ref.off('child_added', cb));
+    state.drawListeners = [];
+  }
+}
+
 /* الهوست يمكنه إنهاء وقت النقاش مبكراً والانتقال مباشرة للتصويت */
 async function skipDiscussion(){
   if(!state.isHost) return;
@@ -1480,6 +1603,7 @@ async function submitVote(targetUid){
 function route(){
   if(!state.room){ return; }
   const status = state.room.meta.status;
+  if(status!=="playing" && state.currentDrawKey!==null){ detachDrawListeners(); state.currentDrawKey = null; }
   if(status==="waiting") renderWaitingRoom();
   else if(status==="playing") renderPlayingPhase();
   else if(status==="finished") renderFinal();
@@ -1676,7 +1800,24 @@ function renderWaitingRoom(){
           <div class="segmented" id="set-roundtime">
             ${[90,180,300,0].map(n=>`<button data-v="${n}" class="${settings.roundSeconds===n?'active':''}">${n===0?'بلا حد':(n/60)+' د'}</button>`).join('')}
           </div>
-        </div>` : `
+        </div>` : gameType==="draw" ? `
+        <div class="field">
+          <label>التصنيف</label>
+          ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي"}, ...ALL_CATEGORIES.map(c=>({v:c, label:c}))], settings.category)}
+        </div>
+        <div class="field">
+          <label>عدد الجولات</label>
+          <div class="segmented" id="set-rounds">
+            ${[1,3,5,10].map(n=>`<button data-v="${n}" class="${settings.totalRounds===n?'active':''}">${n}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>وقت الرسم لكل جولة</label>
+          <div class="segmented" id="set-drawtime">
+            ${[45,75,105,150].map(n=>`<button data-v="${n}" class="${settings.drawSeconds===n?'active':''}">${n} ث</button>`).join('')}
+          </div>
+        </div>
+        <div class="hint-row">${svgIcon('info')}كل جولة لاعب مختلف يرسم بالدور — خمّنوا بصوتكم عالمكالمة، والرسّام يعلّم مين خمّن صح</div>` : `
         <div class="field">
           <label>التصنيف</label>
           ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي"}, ...(PHOTO_CATEGORIES.length?PHOTO_CATEGORIES.map(c=>c.name):ALL_CATEGORIES).map(c=>({v:c, label:c}))], settings.category)}
@@ -1759,6 +1900,10 @@ function renderWaitingRoom(){
       wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
       document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
       document.getElementById('set-roundtime').onclick = e=>{ if(e.target.dataset.v!==undefined) db.ref(`rooms/${state.roomCode}/settings/roundSeconds`).set(parseInt(e.target.dataset.v)); };
+    } else if(gameType==="draw"){
+      wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
+      document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
+      document.getElementById('set-drawtime').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/drawSeconds`).set(parseInt(e.target.dataset.v)); };
     } else {
       wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
       document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
@@ -1767,7 +1912,7 @@ function renderWaitingRoom(){
       document.getElementById('set-odd').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/oddCount`).set(parseInt(e.target.dataset.v)); };
     }
     const startBtn = document.getElementById('start-btn');
-    if(startBtn) startBtn.onclick = gameType==="chairs" ? startChairsMatch : gameType==="guesswho" ? startGuessMatch : startRound;
+    if(startBtn) startBtn.onclick = gameType==="chairs" ? startChairsMatch : gameType==="guesswho" ? startGuessMatch : gameType==="draw" ? startDrawMatch : startRound;
   }
   wireTopbar();
 }
@@ -1775,8 +1920,22 @@ function renderWaitingRoom(){
 function renderPlayingPhase(){
   const round = state.room.round;
   if(!round) return;
-  clearTimer();
   const gameType = state.room.meta.gameType||"different";
+
+  // مرحلة الرسم الحيّة: نتجاهل أي إعادة رسم متكررة لنفس الجولة (كل خط رسم يسبب تحديثاً بقاعدة البيانات)
+  // كي لا تُمسح اللوحة كل مرة — التحديث اللحظي للخطوط يتم عبر مستمع منفصل داخل renderDrawPhase نفسها
+  if(gameType==="draw" && round.phase==="drawing"){
+    const key = `draw-${round.index}`;
+    if(state.currentDrawKey === key) return;
+    state.currentDrawKey = key;
+    clearTimer();
+    renderDrawPhase(round);
+    injectGameControls();
+    return;
+  }
+  if(state.currentDrawKey !== null){ detachDrawListeners(); state.currentDrawKey = null; }
+
+  clearTimer();
 
   if(gameType==="chairs"){
     if(round.phase!=="music") stopLocalChairsAudio();
@@ -1788,6 +1947,9 @@ function renderPlayingPhase(){
     if(round.phase==="countdown") renderCountdown(round);
     else if(round.phase==="guessing"){ if(state.isHost) watchGuessAsHost(round); renderGuessPlaying(round); }
     else if(round.phase==="result") renderGuessResult(round);
+  } else if(gameType==="draw"){
+    if(round.phase==="countdown") renderCountdown(round);
+    else if(round.phase==="result") renderDrawResult(round);
   } else {
     if(round.phase==="countdown") renderCountdown(round);
     else if(round.phase==="reveal") renderReveal(round);
@@ -2241,6 +2403,145 @@ function renderGuessResult(round){
   if(state.isHost){
     document.getElementById('guess-next').onclick = (state.room.meta.round>=state.room.settings.totalRounds) ? guessFinishMatch : nextGuessRound;
   }
+}
+
+/* ---- خمن: شاشة الرسم الحيّة ---- */
+function renderDrawPhase(round){
+  const isDrawer = state.uid === round.drawerUid;
+  const drawerName = (state.room.players[round.drawerUid]||{}).name || '';
+  const others = Object.entries(state.room.players).filter(([uid,p])=>uid!==round.drawerUid && p.online!==false);
+  const total = (state.room.settings.drawSeconds||75)*1000;
+  const remaining = Math.max(0, round.phaseEndAt-Date.now());
+  const myWord = state.myAssignment;
+
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:520px;">
+    <div class="phase-eyebrow">الجولة ${round.index} — يرسم: ${escapeHTML(drawerName)}</div>
+    ${timerRingHTML()}
+    ${isDrawer
+      ? `<div class="draw-word-banner">ارسم: ${escapeHTML(myWord?myWord.word:'')} ${myWord&&myWord.emoji?myWord.emoji:''}</div>`
+      : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}خمّن بصوتك عالمكالمة!</div>`}
+
+    <div class="canvas-wrap"><canvas id="draw-canvas" width="600" height="400"></canvas></div>
+
+    ${isDrawer ? `
+      <div class="color-row" id="color-row">
+        ${["#1a1a1a","#e63946","#2a9d8f","#f4a300","#3a86ff","#ffffff"].map((c,i)=>`<button class="color-dot ${i===0?'active':''}" data-c="${c}" style="background:${c};"></button>`).join('')}
+      </div>
+      <button class="btn btn-secondary btn-sm" id="clear-canvas" style="margin-top:6px;">🧹 امسح الكل</button>
+
+      <div class="section-title" style="width:100%;">مين خمّن صح؟ (اضغط لما تسمعه يخمّن صح بصوته)</div>
+      <div class="player-list" style="width:100%;">
+        ${others.map(([uid,p])=>`
+          <button class="player-card guess-btn" data-uid="${uid}" style="width:100%; text-align:right; border:none; cursor:pointer;">
+            <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+            <div class="name" style="flex:1;">${escapeHTML(p.name)}</div>
+            <span class="guess-mark-${uid}"></span>
+          </button>`).join('')}
+      </div>
+    ` : `
+      <div class="section-title" style="width:100%;">اللاعبون</div>
+      <div class="player-list" style="width:100%;">
+        ${others.filter(([uid])=>uid!==state.uid).map(([uid,p])=>`
+          <div class="player-card">
+            <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+            <div class="name">${escapeHTML(p.name)}</div>
+          </div>`).join('')}
+      </div>
+    `}
+  </div></div>`;
+
+  startRingCountdown(total, remaining, ()=>{});
+
+  const canvas = document.getElementById('draw-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  function paintSegment(s){
+    ctx.strokeStyle = s.c; ctx.lineWidth = s.s;
+    ctx.beginPath();
+    ctx.moveTo(s.x0*canvas.width, s.y0*canvas.height);
+    ctx.lineTo(s.x1*canvas.width, s.y1*canvas.height);
+    ctx.stroke();
+  }
+
+  detachDrawListeners();
+  const strokesRef = db.ref(`rooms/${state.roomCode}/round/strokes`);
+  const onStroke = snap=>{ const s = snap.val(); if(s) paintSegment(s); };
+  strokesRef.on('child_added', onStroke);
+  state.drawListeners.push([strokesRef, onStroke]);
+
+  if(isDrawer){
+    let color = "#1a1a1a", size = 5;
+    document.querySelectorAll('.color-dot').forEach(btn=>{
+      btn.onclick = ()=>{
+        color = btn.dataset.c; size = (btn.dataset.c==="#ffffff") ? 16 : 5; // أبيض = ممحاة تقريباً
+        document.querySelectorAll('.color-dot').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+      };
+    });
+    document.getElementById('clear-canvas').onclick = async ()=>{
+      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      await db.ref(`rooms/${state.roomCode}/round/strokes`).set(null);
+    };
+
+    let drawing=false, lastX=0, lastY=0;
+    function pos(e){
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {x:(clientX-rect.left)/rect.width, y:(clientY-rect.top)/rect.height};
+    }
+    canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); drawing=true; const p=pos(e); lastX=p.x; lastY=p.y; });
+    canvas.addEventListener('pointermove', e=>{
+      if(!drawing) return; e.preventDefault();
+      const p = pos(e);
+      db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastX,y0:lastY,x1:p.x,y1:p.y,c:color,s:size});
+      lastX = p.x; lastY = p.y;
+    });
+    window.addEventListener('pointerup', ()=>{ drawing=false; });
+
+    document.querySelectorAll('.guess-btn').forEach(btn=>{
+      btn.onclick = ()=>{
+        const uid = btn.dataset.uid;
+        markGuesserCorrect(uid);
+        const mark = btn.querySelector(`.guess-mark-${uid}`);
+        if(mark) mark.textContent = '✅';
+        btn.disabled = true; btn.style.opacity = '0.55';
+      };
+    });
+  }
+}
+
+function renderDrawResult(round){
+  const players = state.room.players;
+  const matchOver = (round.index||1) >= (state.room.settings.totalRounds||3);
+  const guessersSorted = Object.entries(round.correctGuessers||{}).sort((a,b)=>a[1]-b[1]);
+
+  playSound(guessersSorted.length ? 'win' : 'lose');
+  if(guessersSorted.length) launchConfetti();
+
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
+    <div class="phase-eyebrow">الكلمة كانت</div>
+    <div class="reveal-name">${escapeHTML(round.revealedWord||'')}</div>
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}الرسّام: ${escapeHTML(players[round.drawerUid]?players[round.drawerUid].name:'')}</div>
+
+    <div class="section-title" style="width:100%;">مين خمّن صح</div>
+    ${guessersSorted.length ? `
+    <div class="player-list" style="width:100%;">
+      ${guessersSorted.map(([uid,rank])=>`
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(players[uid]?players[uid].name:''))}</div>
+          <div class="name" style="flex:1;">${escapeHTML(players[uid]?players[uid].name:'')}</div>
+          <span style="color:var(--text-dim); font-size:12px;">#${rank}</span>
+        </div>`).join('')}
+    </div>` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}ما حدا خمّن صح هالجولة 😅</div>`}
+
+    ${state.isHost ? `<button class="btn btn-primary" id="draw-next" style="margin-top:20px;">${svgIcon('play')}${matchOver?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
+      : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}بانتظار الهوست للمتابعة…</div>`}
+  </div></div>`;
+
+  if(state.isHost) document.getElementById('draw-next').onclick = matchOver ? drawFinishMatch : nextDrawRound;
 }
 
 function renderFinal(){

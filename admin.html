@@ -282,11 +282,11 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="section-title">📂 تصنيفات الصور</div>
-        <p class="hint">كل تصنيف = اسم يظهر للاعبين + كلمة بحث بالإنجليزي (أو أكثر) تُستخدم لجلب صورة عشوائية من Pexels. تقدر تكتب أكثر من كلمة بحث مفصولة بفاصلة لتنويع الصور مع بقائها واضحة ومحددة — مثلاً بدل "electronic device" (يعطي صور مبهمة فيها أكثر من جهاز) اكتب "smartphone, laptop computer, tablet computer" (كل صورة تطلع جهاز واحد واضح فقط). كلمات البحث بالإنجليزي بتعطي نتائج أدق وأكثر.</p>
+        <p class="hint">كل تصنيف = اسم عام يظهر للاعبين + كلمة بحث بالإنجليزي (أو أكثر) تُستخدم لجلب صورة عشوائية من Pexels. اكتب أكثر من كلمة بحث مفصولة بفاصلة لتنويع الصور مع بقائها واضحة ومحددة (بدل كلمة عامة مبهمة). تقدر كمان تحدد **اسم عربي خاص لكل كلمة** بصيغة <code>englishTerm:الاسم بالعربي</code> — هيك يطلع اسم الشيء المحدد بالصورة (متل "قطة" أو "كلب") بدل اسم التصنيف العام دايماً. مثال لتصنيف "حيوانات": <code>cat:قطة, dog:كلب, rabbit:أرنب</code>.</p>
         <div id="photo-cats-list">جارِ التحميل…</div>
         <div class="row2" style="margin-top:12px;">
           <input id="new-cat-name-p" placeholder="الاسم الظاهر، مثال: لاعبين">
-          <input id="new-cat-query-p" placeholder="كلمة بحث أو أكثر مفصولة بفاصلة، مثال: smartphone, laptop">
+          <input id="new-cat-query-p" placeholder="مثال: cat:قطة, dog:كلب, rabbit:أرنب">
         </div>
         <button class="btn btn-secondary btn-sm" id="add-photo-cat" style="margin-top:10px;">+ إضافة تصنيف</button>
       </div>
@@ -656,8 +656,8 @@ async function loadPhotoCategories(){
   let snap = await db.ref('gameData/photoCategories').get();
   if(!snap.exists()){
     const defaults = [
-      {name:"أجهزة", query:"smartphone, laptop computer, tablet computer"},
-      {name:"حيوانات", query:"animal"}
+      {name:"أجهزة", query:"smartphone:هاتف, laptop computer:حاسوب, tablet computer:تابلت"},
+      {name:"حيوانات", query:"cat:قطة, dog:كلب, rabbit:أرنب, horse:حصان, lion:أسد, elephant:فيل, tiger:نمر, panda:باندا, sparrow:عصفور, fish:سمكة, cow:بقرة, sheep:خروف, goat:ماعز, pig:خنزير, chicken:دجاجة, duck:بطة, monkey:قرد, bear:دب, wolf:ذئب, fox:ثعلب, deer:غزال, zebra:حمار وحشي, giraffe:زرافة, kangaroo:كنغر, koala:كوالا, camel:جمل, donkey:حمار, squirrel:سنجاب, hedgehog:قنفذ, turtle:سلحفاة, frog:ضفدع, snake:أفعى, lizard:سحلية, crocodile:تمساح, shark:قرش, dolphin:دلفين, whale:حوت, seal animal:فقمة, penguin:بطريق, owl:بومة, eagle:نسر, parrot:ببغاء, peacock:طاووس, flamingo:نحام, swan:بجعة, butterfly:فراشة, bee:نحلة, spider:عنكبوت, octopus:أخطبوط, hippopotamus:فرس النهر"}
     ];
     const seed = {};
     defaults.forEach(c=>{ seed[c.name] = c; });

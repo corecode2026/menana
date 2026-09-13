@@ -176,6 +176,28 @@ input{font-family:var(--font-body);}
 .user-menu button:hover{background:rgba(124,92,255,0.15);}
 .user-menu button:not(:last-child){border-bottom:1px solid rgba(255,255,255,0.05);}
 
+@media (max-width:520px){
+  .topbar{padding:10px 12px; gap:6px;}
+  .topbar-brand span{display:none;}
+  .topbar-brand svg{width:24px; height:24px;}
+  .topbar-nav{gap:2px;}
+  .topbar-nav button{padding:7px 9px; font-size:12px;}
+  .btn-google{padding:9px 12px;}
+  .btn-google-label{display:none;}
+  .topbar-username{display:none;}
+  .topbar-user{padding:5px;}
+}
+
+@media (max-width:420px){
+  .hub-header h1{font-size:24px;}
+  .hub-header p{font-size:13px;}
+  .hub-header .brand-mark{width:56px; height:56px;}
+  .game-tile .t-banner{height:88px;}
+  .game-tile .t-body{padding:14px 15px 15px;}
+  .game-tile .t-name{font-size:16px;}
+  .game-tile .t-footer{flex-wrap:wrap; gap:8px;}
+}
+
 /* ---- footer ---- */
 .site-footer{
   margin-top:8px; padding:26px 20px 10px; text-align:center; border-top:1px solid var(--border);
@@ -727,11 +749,18 @@ async function saveProfileName(name){
   }catch(e){ toast("تعذر الحفظ"); }
 }
 
+function isMobileDevice(){
+  return /Android|iPhone|iPad|iPod|Mobile|webOS/i.test(navigator.userAgent) || window.innerWidth < 700;
+}
+
 async function signInWithGoogle(){
+  const mobile = isMobileDevice();
   try{
     if(auth.currentUser && auth.currentUser.isAnonymous){
+      if(mobile){ await auth.currentUser.linkWithRedirect(googleProvider); return; } // الصفحة ستُعاد تحميلها بعد الموافقة
       await auth.currentUser.linkWithPopup(googleProvider);
     } else {
+      if(mobile){ await auth.signInWithRedirect(googleProvider); return; }
       await auth.signInWithPopup(googleProvider);
     }
     await ensureProfileName(auth.currentUser);
@@ -740,11 +769,27 @@ async function signInWithGoogle(){
   }catch(err){
     console.error(err);
     if(err.code === 'auth/credential-already-in-use'){
-      try{ await auth.signInWithPopup(googleProvider); await ensureProfileName(auth.currentUser); route_afterAuthChange(); }
+      try{
+        if(mobile){ await auth.signInWithRedirect(googleProvider); return; }
+        await auth.signInWithPopup(googleProvider); await ensureProfileName(auth.currentUser); route_afterAuthChange();
+      }
       catch(e2){ toast("تعذر تسجيل الدخول"); }
     } else if(err.code !== 'auth/popup-closed-by-user'){
       toast("تعذر تسجيل الدخول بجوجل");
     }
+  }
+}
+
+/* يلتقط نتيجة تسجيل الدخول بعد العودة من صفحة جوجل (مسار الموبايل عبر signInWithRedirect) */
+async function checkGoogleRedirectResult(){
+  try{
+    const result = await auth.getRedirectResult();
+    if(result && result.user){
+      await ensureProfileName(result.user);
+      toast("تم تسجيل الدخول ✅");
+    }
+  }catch(err){
+    if(err && err.code && err.code !== 'auth/credential-already-in-use'){ console.error(err); }
   }
 }
 
@@ -2016,7 +2061,7 @@ function topbarHTML(){
           <button id="menu-logout">${svgIcon('logout')}تسجيل الخروج</button>
         </div>
       ` : `
-        <button class="btn-google" id="google-signin">${svgIcon('google')}تسجيل الدخول بجوجل</button>
+        <button class="btn-google" id="google-signin">${svgIcon('google')}<span class="btn-google-label">تسجيل الدخول بجوجل</span></button>
       `}
     </div>
   </header>`;
@@ -2215,6 +2260,7 @@ function launchConfetti(){
    ========================================================================= */
 (async function init(){
   await ensureAuth();
+  await checkGoogleRedirectResult();
   await loadGameData();
   const params = new URLSearchParams(location.search);
   const roomFromLink = params.get('room');

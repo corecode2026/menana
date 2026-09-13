@@ -267,11 +267,11 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="section-title">📂 تصنيفات الصور</div>
-        <p class="hint">كل تصنيف = اسم يظهر للاعبين + كلمة بحث بالإنجليزي تُستخدم لجلب صورة عشوائية من Pexels (كلمات البحث بالإنجليزي بتعطي نتائج أدق وأكثر).</p>
+        <p class="hint">كل تصنيف = اسم يظهر للاعبين + كلمة بحث بالإنجليزي (أو أكثر) تُستخدم لجلب صورة عشوائية من Pexels. تقدر تكتب أكثر من كلمة بحث مفصولة بفاصلة لتنويع الصور مع بقائها واضحة ومحددة — مثلاً بدل "electronic device" (يعطي صور مبهمة فيها أكثر من جهاز) اكتب "smartphone, laptop computer, tablet computer" (كل صورة تطلع جهاز واحد واضح فقط). كلمات البحث بالإنجليزي بتعطي نتائج أدق وأكثر.</p>
         <div id="photo-cats-list">جارِ التحميل…</div>
         <div class="row2" style="margin-top:12px;">
           <input id="new-cat-name-p" placeholder="الاسم الظاهر، مثال: لاعبين">
-          <input id="new-cat-query-p" placeholder="كلمة البحث بالإنجليزي، مثال: soccer player">
+          <input id="new-cat-query-p" placeholder="كلمة بحث أو أكثر مفصولة بفاصلة، مثال: smartphone, laptop">
         </div>
         <button class="btn btn-secondary btn-sm" id="add-photo-cat" style="margin-top:10px;">+ إضافة تصنيف</button>
       </div>
@@ -630,7 +630,7 @@ async function loadPhotoCategories(){
   let snap = await db.ref('gameData/photoCategories').get();
   if(!snap.exists()){
     const defaults = [
-      {name:"أجهزة", query:"electronic device"},
+      {name:"أجهزة", query:"smartphone, laptop computer, tablet computer"},
       {name:"حيوانات", query:"animal"}
     ];
     const seed = {};
@@ -643,6 +643,7 @@ async function loadPhotoCategories(){
   list.innerHTML = Object.entries(data).map(([key,c])=>`
       <div class="word-row">
         <div class="word" style="flex:1;">${escapeHTML(c.name)} <span style="color:var(--text-dim); font-size:12px;">(${escapeHTML(c.query)})</span></div>
+        <button class="btn-icon edit-cat" data-key="${escapeHTML(key)}" data-name="${escapeHTML(c.name)}" data-query="${escapeHTML(c.query)}" title="تعديل" style="background:rgba(124,92,255,0.14); color:var(--violet-2);">✎</button>
         <button class="del" data-key="${escapeHTML(key)}">حذف</button>
       </div>`).join('');
     list.querySelectorAll('.del').forEach(btn=>{
@@ -652,14 +653,31 @@ async function loadPhotoCategories(){
         loadPhotoCategories();
       };
     });
-  document.getElementById('add-photo-cat').onclick = async ()=>{
+    list.querySelectorAll('.edit-cat').forEach(btn=>{
+      btn.onclick = ()=>{
+        document.getElementById('new-cat-name-p').value = btn.dataset.name;
+        document.getElementById('new-cat-query-p').value = btn.dataset.query;
+        const addBtn = document.getElementById('add-photo-cat');
+        addBtn.textContent = "💾 حفظ التعديل";
+        addBtn.dataset.editKey = btn.dataset.key;
+        document.getElementById('new-cat-name-p').focus();
+      };
+    });
+  document.getElementById('add-photo-cat').onclick = async function(){
     const name = document.getElementById('new-cat-name-p').value.trim();
     const query = document.getElementById('new-cat-query-p').value.trim();
     if(!name || !query){ toast("عبّي الاسم وكلمة البحث"); return; }
-    await db.ref('gameData/photoCategories').push({name, query});
+    if(this.dataset.editKey){
+      await db.ref(`gameData/photoCategories/${this.dataset.editKey}`).set({name, query});
+      delete this.dataset.editKey;
+      this.textContent = "+ إضافة تصنيف";
+      toast("تم حفظ التعديل ✅");
+    } else {
+      await db.ref('gameData/photoCategories').push({name, query});
+      toast("تمت الإضافة ✅");
+    }
     document.getElementById('new-cat-name-p').value = '';
     document.getElementById('new-cat-query-p').value = '';
-    toast("تمت الإضافة ✅");
     loadPhotoCategories();
   };
 }

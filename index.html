@@ -754,18 +754,11 @@ async function saveProfileName(name){
   }catch(e){ toast("تعذر الحفظ"); }
 }
 
-function isMobileDevice(){
-  return /Android|iPhone|iPad|iPod|Mobile|webOS/i.test(navigator.userAgent) || window.innerWidth < 700;
-}
-
 async function signInWithGoogle(){
-  const mobile = isMobileDevice();
   try{
     if(auth.currentUser && auth.currentUser.isAnonymous){
-      if(mobile){ await auth.currentUser.linkWithRedirect(googleProvider); return; } // الصفحة ستُعاد تحميلها بعد الموافقة
       await auth.currentUser.linkWithPopup(googleProvider);
     } else {
-      if(mobile){ await auth.signInWithRedirect(googleProvider); return; }
       await auth.signInWithPopup(googleProvider);
     }
     await ensureProfileName(auth.currentUser);
@@ -775,8 +768,9 @@ async function signInWithGoogle(){
     console.error('[auth] signInWithGoogle error ->', err);
     if(err.code === 'auth/credential-already-in-use'){
       try{
-        if(mobile){ await auth.signInWithRedirect(googleProvider); return; }
-        await auth.signInWithPopup(googleProvider); await ensureProfileName(auth.currentUser); route_afterAuthChange();
+        await auth.signInWithPopup(googleProvider);
+        await ensureProfileName(auth.currentUser);
+        route_afterAuthChange();
       }
       catch(e2){ console.error('[auth] fallback error ->', e2); toast(`تعذر تسجيل الدخول: ${e2.code||''}`); }
     } else if(err.code !== 'auth/popup-closed-by-user'){

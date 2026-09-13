@@ -579,7 +579,11 @@ input{font-family:var(--font-body);}
 <canvas id="particles"></canvas>
 <canvas id="confetti-canvas"></canvas>
 <div id="toast"></div>
-<div id="app"></div>
+<div id="app">
+  <div class="wrap" style="min-height:100vh;">
+    <div class="spinner" style="width:32px; height:32px; border-width:3px;"></div>
+  </div>
+</div>
 
 <script>
 /* =========================================================================
@@ -676,7 +680,16 @@ const AVATAR_COLORS = ["#7c5cff","#22d3ee","#ff8a4c","#3ddc97","#ff5470","#ffd16
 
 /* تحميل بيانات اللعبة القابلة للتعديل من لوحة التحكم: أسماء الألعاب + بنك الكلمات */
 async function loadGameData(){
-  const wbSnap = await db.ref('gameData/wordBank').get();
+  const [wbSnap, gamesSnap, imgSnap, songsSnap, defSnap, keySnap, catsSnap] = await Promise.all([
+    db.ref('gameData/wordBank').get(),
+    db.ref('gameData/games').get(),
+    db.ref('gameData/guessImages').get(),
+    db.ref('gameData/chairsSongs').get(),
+    db.ref('gameData/defaults').get(),
+    db.ref('gameData/apiKey').get(),
+    db.ref('gameData/photoCategories').get()
+  ]);
+
   if(wbSnap.exists()){
     const raw = wbSnap.val();
     WORD_BANK = {};
@@ -694,7 +707,6 @@ async function loadGameData(){
   }
   ALL_CATEGORIES = Object.keys(WORD_BANK);
 
-  const gamesSnap = await db.ref('gameData/games').get();
   if(gamesSnap.exists()){
     const overrides = gamesSnap.val();
     GAMES.forEach(g=>{
@@ -704,7 +716,30 @@ async function loadGameData(){
       }
     });
   }
+
+  GUESS_IMAGES = imgSnap.exists() ? Object.values(imgSnap.val()) : [];
+  CHAIRS_SONGS = songsSnap.exists() ? Object.values(songsSnap.val()) : [];
+  SETTINGS_DEFAULTS = defSnap.exists() ? defSnap.val() : {};
+
+  if(keySnap.exists()){
+    API_KEY = keySnap.val();
+  } else {
+    // مفتاح Pexels افتراضي — يمكن استبداله في أي وقت من لوحة التحكم
+    API_KEY = "8u2QchOqpAbL5b8j2xZpQU6OcpYAjnFNOvOSs1ISEyclc1GYjJYM1t6s";
+    db.ref('gameData/apiKey').set(API_KEY).catch(()=>{});
+  }
+
+  if(catsSnap.exists()){
+    PHOTO_CATEGORIES = Object.values(catsSnap.val());
+  } else {
+    PHOTO_CATEGORIES = DEFAULT_PHOTO_CATEGORIES.slice();
+    const seed = {};
+    DEFAULT_PHOTO_CATEGORIES.forEach(c=>{ seed[c.name] = c; }); // مفاتيح مؤقتة، تُستبدل بمفاتيح push من لوحة التحكم لاحقاً
+    db.ref('gameData/photoCategories').set(seed).catch(()=>{});
+  }
+
   // تحديث لحظي: أي تعديل من لوحة التحكم أثناء تشغيل اللعبة ينعكس مباشرة (يُطبَّق على الجولة القادمة)
+  // هذه المستمعات لا تُبطئ الإقلاع — تُضاف بعد التحميل الأول وتعمل بالخلفية
   db.ref('gameData/wordBank').on('value', snap=>{
     if(!snap.exists()) return;
     const raw = snap.val();
@@ -722,38 +757,10 @@ async function loadGameData(){
       }
     });
   });
-
-  const imgSnap = await db.ref('gameData/guessImages').get();
-  GUESS_IMAGES = imgSnap.exists() ? Object.values(imgSnap.val()) : [];
   db.ref('gameData/guessImages').on('value', snap=>{ GUESS_IMAGES = snap.exists() ? Object.values(snap.val()) : []; });
-
-  const songsSnap = await db.ref('gameData/chairsSongs').get();
-  CHAIRS_SONGS = songsSnap.exists() ? Object.values(songsSnap.val()) : [];
   db.ref('gameData/chairsSongs').on('value', snap=>{ CHAIRS_SONGS = snap.exists() ? Object.values(snap.val()) : []; });
-
-  const defSnap = await db.ref('gameData/defaults').get();
-  SETTINGS_DEFAULTS = defSnap.exists() ? defSnap.val() : {};
   db.ref('gameData/defaults').on('value', snap=>{ SETTINGS_DEFAULTS = snap.exists() ? snap.val() : {}; });
-
-  const keySnap = await db.ref('gameData/apiKey').get();
-  if(keySnap.exists()){
-    API_KEY = keySnap.val();
-  } else {
-    // مفتاح Pexels افتراضي — يمكن استبداله في أي وقت من لوحة التحكم
-    API_KEY = "8u2QchOqpAbL5b8j2xZpQU6OcpYAjnFNOvOSs1ISEyclc1GYjJYM1t6s";
-    db.ref('gameData/apiKey').set(API_KEY).catch(()=>{});
-  }
   db.ref('gameData/apiKey').on('value', snap=>{ API_KEY = snap.exists() ? snap.val() : ""; });
-
-  const catsSnap = await db.ref('gameData/photoCategories').get();
-  if(catsSnap.exists()){
-    PHOTO_CATEGORIES = Object.values(catsSnap.val());
-  } else {
-    PHOTO_CATEGORIES = DEFAULT_PHOTO_CATEGORIES.slice();
-    const seed = {};
-    DEFAULT_PHOTO_CATEGORIES.forEach(c=>{ seed[c.name] = c; }); // مفاتيح مؤقتة، تُستبدل بمفاتيح push من لوحة التحكم لاحقاً
-    db.ref('gameData/photoCategories').set(seed).catch(()=>{});
-  }
   db.ref('gameData/photoCategories').on('value', snap=>{ PHOTO_CATEGORIES = snap.exists() ? Object.values(snap.val()) : []; });
 }
 

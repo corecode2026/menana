@@ -581,9 +581,9 @@ async function pickMainItem(categoryChoice){
   return {word:p.main, emoji:p.mainEmoji, imageUrl:null};
 }
 
-/* عنصر لعبة "شو معي؟" — نفس الفكرة، بلا اختيار تصنيف (عشوائي دايماً) */
-async function pickGuessItemAsync(){
-  const photo = await pickCategoryPhoto("عشوائي");
+/* عنصر لعبة "شو معي؟" — يحترم التصنيف المختار إن وُجد، وإلا عشوائي */
+async function pickGuessItemAsync(categoryChoice){
+  const photo = await pickCategoryPhoto(categoryChoice||"عشوائي");
   if(photo) return photo;
   return pickGuessItem();
 }
@@ -664,7 +664,7 @@ function defaultSettingsFor(gameId, maxPlayers){
   if(gameId==="chairs"){
     base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, soundOn:true};
   } else if(gameId==="guesswho"){
-    base = {minPlayers:2, maxPlayers:2, roundSeconds:180, totalRounds:3, soundOn:true};
+    base = {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
   } else {
     base = {
       minPlayers:3, maxPlayers: maxPlayers||8,
@@ -1024,9 +1024,9 @@ function pickGuessItem(){
   return {word:p.main, emoji:p.mainEmoji, imageUrl:null};
 }
 
-async function guessAssignmentsFor(uidA, uidB){
-  const itemA = await pickGuessItemAsync(); // صورة A الحقيقية — يشاهدها B
-  const itemB = await pickGuessItemAsync(); // صورة B الحقيقية — يشاهدها A
+async function guessAssignmentsFor(uidA, uidB, categoryChoice){
+  const itemA = await pickGuessItemAsync(categoryChoice); // صورة A الحقيقية — يشاهدها B
+  const itemB = await pickGuessItemAsync(categoryChoice); // صورة B الحقيقية — يشاهدها A
   return {
     assignments: {
       [uidA]: itemB,
@@ -1041,11 +1041,12 @@ async function startGuessMatch(){
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   if(players.length !== 2){ toast("هذه اللعبة لشخصين بالضبط"); return; }
   const [uidA, uidB] = players.map(([uid])=>uid);
+  const settings = state.room.settings;
 
   const startBtn = document.getElementById('start-btn');
   if(startBtn){ startBtn.disabled = true; startBtn.innerHTML = '<span class="spinner"></span>'; }
 
-  const built = await guessAssignmentsFor(uidA, uidB);
+  const built = await guessAssignmentsFor(uidA, uidB, settings.category||"عشوائي");
 
   await db.ref(`rooms/${code}/round`).set({
     index:1, assignments: built.assignments,
@@ -1120,9 +1121,10 @@ async function nextGuessRound(){
   if(!state.isHost) return;
   const code = state.roomCode;
   const round = state.room.round;
+  const settings = state.room.settings;
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   const [uidA, uidB] = players.map(([uid])=>uid);
-  const built = await guessAssignmentsFor(uidA, uidB);
+  const built = await guessAssignmentsFor(uidA, uidB, settings.category||"عشوائي");
 
   await db.ref(`rooms/${code}/round`).set({
     index:(round.index||1)+1, assignments: built.assignments,
@@ -1311,7 +1313,10 @@ function renderWaitingRoom(){
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
           </div>
         </div>` : gameType==="guesswho" ? `
-        <div class="hint-row">${svgIcon('info')}الصور تُدار من لوحة التحكم — إذا ما رُفعت صور، ستُستخدم كلمات وإيموجي بنك الكلمات العام تلقائياً</div>
+        <div class="field">
+          <label>تصنيف الصور</label>
+          ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي (كل التصنيفات)"}, ...(PHOTO_CATEGORIES.length?PHOTO_CATEGORIES.map(c=>c.name):ALL_CATEGORIES).map(c=>({v:c, label:c}))], settings.category)}
+        </div>
         <div class="field">
           <label>عدد الجولات</label>
           <div class="segmented" id="set-rounds">
@@ -1400,6 +1405,7 @@ function renderWaitingRoom(){
     if(gameType==="chairs"){
       document.getElementById('set-eliminate').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/eliminatePerRound`).set(parseInt(e.target.dataset.v)); };
     } else if(gameType==="guesswho"){
+      wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
       document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
       document.getElementById('set-roundtime').onclick = e=>{ if(e.target.dataset.v!==undefined) db.ref(`rooms/${state.roomCode}/settings/roundSeconds`).set(parseInt(e.target.dataset.v)); };
     } else {

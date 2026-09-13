@@ -761,7 +761,9 @@ async function loadGameData(){
 async function fetchRandomPhoto(query){
   if(!API_KEY) return null;
   try{
-    const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30`, {
+    // صفحة عشوائية بين 1 و5 — بتزيد تنوّع الصور وبتمنع أي تخزين مؤقت بالمتصفح لنفس الطلب يرجّع نفس النتيجة مرتين
+    const page = Math.floor(Math.random()*5)+1;
+    const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=20&page=${page}`, {
       headers:{ Authorization: API_KEY }
     });
     if(!res.ok) return null;
@@ -1358,7 +1360,16 @@ function pickGuessItem(){
 
 async function guessAssignmentsFor(uidA, uidB, categoryChoice){
   const itemA = await pickGuessItemAsync(categoryChoice); // صورة A الحقيقية — يشاهدها B
-  const itemB = await pickGuessItemAsync(categoryChoice); // صورة B الحقيقية — يشاهدها A
+  let itemB = await pickGuessItemAsync(categoryChoice); // صورة B الحقيقية — يشاهدها A
+
+  // ضمان إضافي: لو طلعت نفس الصورة بالصدفة (نفس الرابط أو نفس الكلمة)، نعيد سحب صورة B لعدة محاولات
+  const sameItem = (a,b)=> a && b && ((a.imageUrl && a.imageUrl===b.imageUrl) || (!a.imageUrl && !b.imageUrl && a.word===b.word));
+  let attempts = 0;
+  while(sameItem(itemA, itemB) && attempts < 4){
+    itemB = await pickGuessItemAsync(categoryChoice);
+    attempts++;
+  }
+
   return {
     assignments: {
       [uidA]: itemB,
@@ -2368,6 +2379,8 @@ function renderGuessPlaying(round){
       </div>
       <button class="btn btn-primary" id="guess-submit" style="width:100%;">${svgIcon('send')}أعلن تخمينك</button>
     `}
+
+    ${state.isHost ? `<button class="btn btn-secondary btn-sm" id="end-round-now" style="margin-top:10px;">⏹ إنهاء الجولة الآن (إظهار الصورتين)</button>` : ''}
   </div></div>`;
 
   if(total>0) startRingCountdown(total, remaining, ()=>{});
@@ -2382,6 +2395,8 @@ function renderGuessPlaying(round){
     document.getElementById('guess-submit').onclick = submit;
     input.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
   }
+  const endBtn = document.getElementById('end-round-now');
+  if(endBtn) endBtn.onclick = function(){ this.disabled = true; this.textContent = 'جارِ الإنهاء…'; finalizeGuessRound(null); };
 }
 
 function renderGuessResult(round){
@@ -2404,7 +2419,7 @@ function renderGuessResult(round){
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="result-banner ${won?'result-win':lost?'result-lose':''}">
-      ${won?'خمّنت صورتك صح! 🎉':lost?`${escapeHTML(players[round.winnerOfRound]?players[round.winnerOfRound].name:'خصمك')} خمّن صورته قبلك 🕵️`:'انتهى الوقت بلا تخمين صحيح ⏱️'}
+      ${won?'خمّنت صورتك صح! 🎉':lost?`${escapeHTML(players[round.winnerOfRound]?players[round.winnerOfRound].name:'خصمك')} خمّن صورته قبلك 🕵️`:'انتهت الجولة بلا تخمين صحيح ⏱️'}
     </div>
 
     <div class="phase-eyebrow">صورتك كانت</div>

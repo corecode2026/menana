@@ -2156,6 +2156,7 @@ function renderVoting(round){
         </button>`).join('')}
     </div>
     <div class="vote-count-note">${Object.keys(votes).length} من ${players.length} صوّتوا${myVote?' — تم تسجيل تصويتك':''}</div>
+    ${state.isHost ? `<button class="btn btn-secondary btn-sm" id="end-voting-now" style="margin-top:14px;">⏹ إنهاء التصويت الآن</button>` : ''}
   </div></div>`;
 
   startRingCountdown(total, remaining, ()=>{});
@@ -2165,6 +2166,8 @@ function renderVoting(round){
       btn.onclick = ()=>{ if(btn.dataset.uid!==state.uid) submitVote(btn.dataset.uid); };
     });
   }
+  const endBtn = document.getElementById('end-voting-now');
+  if(endBtn) endBtn.onclick = function(){ this.disabled = true; this.textContent = 'جارِ الإنهاء…'; finishVoting(); };
 }
 
 function renderResults(round){

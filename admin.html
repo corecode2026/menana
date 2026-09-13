@@ -199,6 +199,16 @@ async function renderDashboard(){
         <div class="field"><label>عدد المُقصين في كل جولة</label><input id="def-chairs-eliminate" type="number" min="1" max="3"></div>
         <button class="btn btn-primary btn-sm" id="save-def-chairs">حفظ الإعدادات الافتراضية</button>
       </div>
+      <div class="card">
+        <div class="section-title">🎵 بنك الأغاني</div>
+        <p class="hint">تُشغَّل اللعبة أغنية عشوائية من هذا البنك تلقائياً كل جولة، وتتوقف لحالها بعد مدة عشوائية (يحدّد الهوست المدى من غرفة الانتظار). ألصق رابط ملف صوتي مباشر (.mp3 مثلاً — من موقع استضافة صوتيات مجاني، أو مستودعك على GitHub).</p>
+        <div id="chairs-songs-list">جارِ التحميل…</div>
+        <div class="row2" style="margin-top:12px;">
+          <input id="new-song-url" placeholder="https://example.com/song.mp3">
+          <input id="new-song-name" placeholder="اسم الأغنية (اختياري)">
+        </div>
+        <button class="btn btn-secondary btn-sm" id="add-song" style="margin-top:10px;">+ إضافة أغنية</button>
+      </div>
     </div>
 
     <!-- تبويب: شو معي؟ -->
@@ -290,6 +300,8 @@ async function renderDashboard(){
   wireImageAdd();
   await loadApiKey();
   await loadPhotoCategories();
+  wireSongBank();
+  await loadChairsSongs();
 }
 
 /* ---- الاسم والوصف لكل لعبة ---- */
@@ -495,6 +507,41 @@ async function loadGuessImages(){
 }
 
 /* ---- مفتاح Pexels API وتصنيفات الصور الحقيقية ---- */
+/* ---- بنك أغاني لعبة الكراسي الموسيقية ---- */
+function wireSongBank(){
+  document.getElementById('add-song').onclick = async ()=>{
+    const urlInput = document.getElementById('new-song-url');
+    const nameInput = document.getElementById('new-song-name');
+    const url = urlInput.value.trim();
+    const name = nameInput.value.trim();
+    if(!url){ toast("الصق رابط الأغنية أولاً"); return; }
+    if(!/^https?:\/\//i.test(url)){ toast("الرابط لازم يبدأ بـ http:// أو https://"); return; }
+    await db.ref('gameData/chairsSongs').push({url, name});
+    urlInput.value = ''; nameInput.value = '';
+    toast("تمت الإضافة ✅");
+    loadChairsSongs();
+  };
+}
+
+async function loadChairsSongs(){
+  const list = document.getElementById('chairs-songs-list');
+  const snap = await db.ref('gameData/chairsSongs').get();
+  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أغاني بعد — ألصق أول رابط تحت.</p>`; return; }
+  const data = snap.val();
+  list.innerHTML = Object.entries(data).map(([key,s])=>`
+    <div class="word-row">
+      <div class="word" style="flex:1;">${escapeHTML(s.name||'(بدون اسم)')} <span style="color:var(--text-dim); font-size:11.5px;">${escapeHTML(s.url)}</span></div>
+      <button class="del" data-key="${escapeHTML(key)}">حذف</button>
+    </div>`).join('');
+  list.querySelectorAll('.del').forEach(btn=>{
+    btn.onclick = async ()=>{
+      await db.ref(`gameData/chairsSongs/${btn.dataset.key}`).set(null);
+      toast("تم حذف الأغنية");
+      loadChairsSongs();
+    };
+  });
+}
+
 async function loadApiKey(){
   const snap = await db.ref('gameData/apiKey').get();
   document.getElementById('api-key').value = snap.exists() ? snap.val() : '';
@@ -508,7 +555,6 @@ async function loadPhotoCategories(){
   let snap = await db.ref('gameData/photoCategories').get();
   if(!snap.exists()){
     const defaults = [
-      {name:"لاعبين", query:"soccer player"},
       {name:"أجهزة", query:"electronic device"},
       {name:"حيوانات", query:"animal"}
     ];

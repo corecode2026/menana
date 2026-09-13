@@ -1077,18 +1077,16 @@ async function restartGame(){
    ========================================================================= */
 /* يفعّل عنصر الصوت عبر ضغطة حقيقية من اللاعب — لازم يصير هذا قبل أي تشغيل تلقائي لاحق،
    لأن أغلب المتصفحات (خصوصاً بالموبايل) بتمنع تشغيل الصوت المُطلق من كود مؤجّل (setTimeout) بدون تفاعل مباشر */
-function unlockChairsAudio(btn){
+/* يفعّل عنصر الصوت بضغطة حقيقية بيسويها اللاعب أصلاً (إنشاء/دخول الغرفة) — بدون أي زر أو خطوة إضافية ظاهرة له.
+   هذا يفتح إمكانية تشغيل الصوت تلقائياً لاحقاً بلعبة الكراسي، لأن أغلب المتصفحات بتمنع الصوت المُطلق من كود مؤجّل (setTimeout) بدون تفاعل مباشر سابق. */
+function unlockChairsAudio(){
   if(!state.chairsAudioEl){
     state.chairsAudioEl = new Audio();
     state.chairsAudioEl.setAttribute('playsinline','');
   }
   const el = state.chairsAudioEl;
   el.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-  el.play().then(()=>{
-    if(btn){ btn.textContent = "الصوت مفعّل ✅"; btn.disabled = true; }
-  }).catch(()=>{
-    toast("تعذر تفعيل الصوت — تأكد إن جهازك مو بوضع صامت");
-  });
+  el.play().catch(()=>{ /* صامت — سيظهر زر تشغيل احتياطي وقت الجولة إذا تطلب الأمر */ });
 }
 
 async function startChairsMatch(){
@@ -1464,6 +1462,7 @@ function renderCreate(gameId){
   document.getElementById('submit').onclick = async ()=>{
     const name = sanitizeInput(document.getElementById('name').value, 16);
     if(!name){ toast("اكتب اسمك أولاً"); return; }
+    unlockChairsAudio(); // ضغطة حقيقية الآن — تفتح إمكانية تشغيل الصوت تلقائياً لاحقاً بلعبة الكراسي بدون أي زر إضافي
     const btn = document.getElementById('submit'); btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
     await createRoom(name, maxpValue, gameId);
   };
@@ -1494,6 +1493,7 @@ function renderJoin(gameId){
     const code = document.getElementById('code').value.trim();
     if(!name){ toast("اكتب اسمك أولاً"); return; }
     if(!code){ toast("اكتب كود الغرفة"); return; }
+    unlockChairsAudio(); // ضغطة حقيقية الآن — تفتح إمكانية تشغيل الصوت تلقائياً لاحقاً بلعبة الكراسي بدون أي زر إضافي
     const btn = document.getElementById('submit'); btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
     const ok = await joinRoom(code, name);
     if(!ok){ btn.innerHTML=svgIcon('enter')+'دخول'; btn.disabled=false; }
@@ -1602,10 +1602,6 @@ function renderWaitingRoom(){
           </div>`).join('')}
       </div>
 
-      ${gameType==="chairs" ? `
-      <button class="btn btn-secondary" id="unlock-audio-btn" style="width:100%; margin-top:14px;">🔊 فعّل صوت اللعبة (اضغط مرة وحدة قبل البدء)</button>
-      ` : ''}
-
       ${isHost ? `
       <div class="section-title">إعدادات الجولة</div>
       <div class="stack">
@@ -1622,8 +1618,6 @@ function renderWaitingRoom(){
   document.getElementById('leave').onclick = ()=>{ leaveRoom(); };
   document.getElementById('copy-code').onclick = ()=>{ navigator.clipboard.writeText(meta.code); toast("تم نسخ الكود"); };
   document.getElementById('copy-link').onclick = ()=>{ navigator.clipboard.writeText(location.href.split('?')[0]+`?room=${meta.code}`); toast("تم نسخ الرابط"); };
-  const unlockBtn = document.getElementById('unlock-audio-btn');
-  if(unlockBtn) unlockBtn.onclick = ()=> unlockChairsAudio(unlockBtn);
 
   if(isHost){
     if(gameType==="chairs"){

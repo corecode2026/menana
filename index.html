@@ -149,6 +149,48 @@ input{font-family:var(--font-body);}
 }
 .quick-join button{color:var(--violet-2); font-weight:800; text-decoration:underline; background:none; border:none; font-size:13px;}
 
+/* ---- top navigation bar ---- */
+.topbar{
+  position:sticky; top:0; z-index:15; display:flex; align-items:center; justify-content:space-between;
+  gap:16px; padding:14px 20px; background:rgba(8,10,16,0.75); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+}
+.topbar-brand{display:flex; align-items:center; gap:10px; background:none; border:none; color:var(--text); font-family:var(--font-display); font-weight:800; font-size:15px;}
+.topbar-brand svg{width:26px; height:26px;}
+.topbar-nav{display:flex; gap:6px; flex:1; justify-content:center;}
+.topbar-nav button{background:none; border:none; color:var(--text-dim); font-weight:700; font-size:13.5px; padding:8px 14px; border-radius:9px; transition:background .15s ease, color .15s ease;}
+.topbar-nav button:hover{background:rgba(255,255,255,0.06); color:var(--text);}
+.topbar-auth{position:relative;}
+.btn-google{display:flex; align-items:center; gap:8px; padding:9px 16px; border-radius:10px; background:#fff; color:#1f1f1f; font-weight:700; font-size:13px; border:1px solid rgba(0,0,0,0.08);}
+.btn-google:hover{filter:brightness(0.97);}
+.topbar-user{display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.05); border:1px solid var(--border); padding:6px 12px 6px 8px; border-radius:100px; color:var(--text);}
+.topbar-avatar, .topbar-avatar-fallback{width:28px; height:28px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+.topbar-avatar-fallback{display:flex; align-items:center; justify-content:center; background:var(--violet); color:#fff; font-weight:800; font-size:12px;}
+.topbar-username{font-size:13px; font-weight:700; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.user-menu{
+  position:absolute; top:calc(100% + 8px); left:0; min-width:190px; background:#12141c; border:1px solid var(--border);
+  border-radius:14px; box-shadow:0 20px 50px rgba(0,0,0,0.5); overflow:hidden; display:none; z-index:20;
+}
+.user-menu.open{display:block;}
+.user-menu button{display:flex; align-items:center; gap:10px; width:100%; padding:12px 16px; background:none; border:none; color:var(--text); font-size:13.5px; text-align:right;}
+.user-menu button:hover{background:rgba(124,92,255,0.15);}
+.user-menu button:not(:last-child){border-bottom:1px solid rgba(255,255,255,0.05);}
+
+/* ---- footer ---- */
+.site-footer{
+  margin-top:8px; padding:26px 20px 10px; text-align:center; border-top:1px solid var(--border);
+  color:var(--text-dim); font-size:12.5px; width:100%;
+}
+.site-footer strong{color:var(--violet-2);}
+.site-footer .footer-links{display:flex; gap:18px; justify-content:center; margin-top:12px;}
+.site-footer .footer-links button{background:none; border:none; color:var(--text-dim); font-size:12.5px; text-decoration:underline;}
+.site-footer .footer-links button:hover{color:var(--text);}
+
+/* ---- policy / static content pages ---- */
+.policy-content{font-size:14px; line-height:2; color:#d6d9e8; text-align:right;}
+.policy-content h3{font-family:var(--font-display); font-size:16px; margin:18px 0 8px; color:var(--text);}
+.policy-content p{margin-bottom:6px;}
+
 /* ---- game picker (home page) — see .hub-* / .game-tile above ---- */
 
 
@@ -462,7 +504,6 @@ let PHOTO_CATEGORIES = [];   // تصنيفات صور حقيقية تُجلب ح
 let API_KEY = "";            // مفتاح Pexels API — يُضبط من لوحة التحكم
 
 const DEFAULT_PHOTO_CATEGORIES = [
-  {name:"لاعبين", query:"soccer player"},
   {name:"أجهزة", query:"electronic device"},
   {name:"حيوانات", query:"animal"}
 ];
@@ -645,15 +686,81 @@ function playSound(type){
 function detachListeners(){ state.listeners.forEach(([ref,cb])=>ref.off('value',cb)); state.listeners=[]; }
 
 /* =========================================================================
-   Auth: تسجيل دخول مجهول لكل جهاز
+   Auth: تسجيل دخول مجهول تلقائي لكل جهاز، مع خيار ربط الحساب بجوجل لاحقاً
    ========================================================================= */
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+
 function ensureAuth(){
   return new Promise((resolve)=>{
-    auth.onAuthStateChanged(user=>{
-      if(user){ state.uid=user.uid; resolve(user.uid); }
-      else{ auth.signInAnonymously().catch(err=>{ console.error(err); toast("تعذر الاتصال بالخادم، تحقق من إعداد Firebase"); }); }
+    auth.onAuthStateChanged(async user=>{
+      if(user){
+        state.uid = user.uid;
+        await ensureProfileName(user);
+        resolve(user.uid);
+      } else {
+        auth.signInAnonymously().catch(err=>{ console.error(err); toast("تعذر الاتصال بالخادم، تحقق من إعداد Firebase"); });
+      }
     });
   });
+}
+
+/* يحمّل الاسم المحفوظ للمستخدم؛ إذا سجّل دخول بجوجل لأول مرة، يستخدم اسم حساب جوجل كبداية */
+async function ensureProfileName(user){
+  try{
+    const snap = await db.ref(`users/${user.uid}/displayName`).get();
+    if(snap.exists()){
+      state.name = snap.val();
+    } else if(user.displayName){
+      state.name = user.displayName;
+      db.ref(`users/${user.uid}/displayName`).set(user.displayName).catch(()=>{});
+    }
+  }catch(e){ /* تجاهل — الاسم اليدوي بالنماذج يبقى يشتغل حتى لو فشل هذا */ }
+}
+
+async function saveProfileName(name){
+  const clean = sanitizeInput(name, 16);
+  if(!clean) return;
+  try{
+    await db.ref(`users/${state.uid}/displayName`).set(clean);
+    state.name = clean;
+    toast("تم حفظ الاسم ✅");
+  }catch(e){ toast("تعذر الحفظ"); }
+}
+
+async function signInWithGoogle(){
+  try{
+    if(auth.currentUser && auth.currentUser.isAnonymous){
+      await auth.currentUser.linkWithPopup(googleProvider);
+    } else {
+      await auth.signInWithPopup(googleProvider);
+    }
+    await ensureProfileName(auth.currentUser);
+    toast("تم تسجيل الدخول ✅");
+    route_afterAuthChange();
+  }catch(err){
+    console.error(err);
+    if(err.code === 'auth/credential-already-in-use'){
+      try{ await auth.signInWithPopup(googleProvider); await ensureProfileName(auth.currentUser); route_afterAuthChange(); }
+      catch(e2){ toast("تعذر تسجيل الدخول"); }
+    } else if(err.code !== 'auth/popup-closed-by-user'){
+      toast("تعذر تسجيل الدخول بجوجل");
+    }
+  }
+}
+
+async function signOutUser(){
+  await auth.signOut();
+  location.reload();
+}
+
+/* يعيد رسم الشاشة الحالية بعد تغيّر حالة الدخول (لتحديث شريط الحساب فوراً) */
+function route_afterAuthChange(){
+  if(state.roomCode && state.room){
+    if(state.room.meta.status==="waiting") renderWaitingRoom();
+    // أثناء اللعب الفعلي لا يوجد شريط علوي أصلاً، فلا حاجة لإعادة الرسم هنا
+    return;
+  }
+  renderHome();
 }
 
 /* =========================================================================
@@ -1180,6 +1287,7 @@ function appRoot(){ return document.getElementById('app'); }
 
 function renderHome(){
   document.getElementById('app').innerHTML = `
+  ${topbarHTML()}
   <div class="wrap">
     <div class="hub-wrap">
       <div class="hub-header">
@@ -1208,16 +1316,20 @@ function renderHome(){
         عندك كود غرفة جاهز؟ <button id="quick-join-btn">ادخل مباشرة</button>
       </div>
     </div>
-  </div>`;
+  </div>
+  ${footerHTML()}`;
   document.querySelectorAll('.game-tile').forEach(btn=>{
     btn.onclick = ()=> renderGamePicked(btn.dataset.g);
   });
   document.getElementById('quick-join-btn').onclick = ()=> renderJoin();
+  wireTopbar();
+  wireFooter();
 }
 
 function renderGamePicked(gameId){
   const g = gameById(gameId);
   document.getElementById('app').innerHTML = `
+  ${topbarHTML()}
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card">
@@ -1235,19 +1347,21 @@ function renderGamePicked(gameId){
   document.getElementById('back').onclick = renderHome;
   document.getElementById('go-create').onclick = ()=> renderCreate(gameId);
   document.getElementById('go-join').onclick = ()=> renderJoin(gameId);
+  wireTopbar();
 }
 
 function renderCreate(gameId){
   const g = gameById(gameId);
   let maxpValue = g.fixedPlayers || 8;
   document.getElementById('app').innerHTML = `
+  ${topbarHTML()}
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card">
       <h2 style="text-align:center; margin-bottom:22px;">إنشاء غرفة جديدة</h2>
       <div class="field">
         <label>اسمك</label>
-        <input id="name" placeholder="مثال: محمد" maxlength="16">
+        <input id="name" placeholder="مثال: محمد" maxlength="16" value="${escapeHTML(state.name||'')}">
       </div>
       ${g.fixedPlayers ? `
         <div class="hint-row" style="margin-bottom:6px;">${svgIcon('info')}هذه اللعبة لشخصين بالضبط</div>
@@ -1267,17 +1381,19 @@ function renderCreate(gameId){
     const btn = document.getElementById('submit'); btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
     await createRoom(name, maxpValue, gameId);
   };
+  wireTopbar();
 }
 
 function renderJoin(gameId){
   document.getElementById('app').innerHTML = `
+  ${topbarHTML()}
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card">
       <h2 style="text-align:center; margin-bottom:22px;">الانضمام إلى غرفة</h2>
       <div class="field">
         <label>اسمك</label>
-        <input id="name" placeholder="مثال: أحمد" maxlength="16">
+        <input id="name" placeholder="مثال: أحمد" maxlength="16" value="${escapeHTML(state.name||'')}">
       </div>
       <div class="field">
         <label>كود الغرفة</label>
@@ -1296,6 +1412,7 @@ function renderJoin(gameId){
     const ok = await joinRoom(code, name);
     if(!ok){ btn.innerHTML=svgIcon('enter')+'دخول'; btn.disabled=false; }
   };
+  wireTopbar();
 }
 
 function renderWaitingRoom(){
@@ -1362,6 +1479,7 @@ function renderWaitingRoom(){
   const canStart = list.length>=needed && (!g.fixedPlayers || list.length===g.fixedPlayers);
 
   document.getElementById('app').innerHTML = `
+  ${topbarHTML()}
   <button class="back-btn" id="leave">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card card-wide">
@@ -1418,6 +1536,7 @@ function renderWaitingRoom(){
     const startBtn = document.getElementById('start-btn');
     if(startBtn) startBtn.onclick = gameType==="chairs" ? startChairsMatch : gameType==="guesswho" ? startGuessMatch : startRound;
   }
+  wireTopbar();
 }
 
 function renderPlayingPhase(){
@@ -1860,7 +1979,10 @@ function svgIcon(name){
     check:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
     chevron:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
     'chevron-left':'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
-    users:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="10" cy="7" r="3.5"/><path d="M22 20v-1a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+    users:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="10" cy="7" r="3.5"/><path d="M22 20v-1a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    user:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+    logout:'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>',
+    google:'<svg class="icon" viewBox="0 0 48 48" width="18" height="18"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 16 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.5 3 24 3c-7.7 0-14.4 4.3-17.7 10.7z"/><path fill="#4CAF50" d="M24 45c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 36.7 26.7 37.5 24 37.5c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.5 40.6 16.2 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.2 5.2C39.9 36.7 43 30.8 43 24c0-1.4-.1-2.7-.4-3.5z"/></svg>'
   };
   return icons[name]||'';
 }
@@ -1868,6 +1990,139 @@ function svgLogo(){
   return `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3" stroke-dasharray="2 2"/><path d="M11 12h2"/>
   </svg>`;
+}
+
+/* ---- شريط التنقّل العلوي: يظهر بشاشات اللوبي (الرئيسية، اختيار اللعبة، إنشاء/انضمام، غرفة الانتظار، الملف الشخصي...)
+   ولا يظهر أثناء مراحل اللعب الفعلية حتى تبقى الشاشة كاملة ومركّزة ---- */
+function topbarHTML(){
+  const user = auth.currentUser;
+  const signedInGoogle = user && !user.isAnonymous;
+  const displayName = state.name || (user && user.displayName) || '';
+  return `<header class="topbar">
+    <button class="topbar-brand" id="topbar-logo">${svgLogo()}<span>منصّة الألعاب</span></button>
+    <nav class="topbar-nav">
+      <button id="nav-home">الرئيسية</button>
+      <button id="nav-games">الألعاب</button>
+    </nav>
+    <div class="topbar-auth">
+      ${signedInGoogle ? `
+        <button class="topbar-user" id="user-menu-btn">
+          ${user.photoURL ? `<img src="${escapeHTML(user.photoURL)}" class="topbar-avatar" alt="">` : `<div class="topbar-avatar-fallback">${escapeHTML(initials(displayName))}</div>`}
+          <span class="topbar-username">${escapeHTML(displayName)}</span>
+          ${svgIcon('chevron')}
+        </button>
+        <div class="user-menu" id="user-menu">
+          <button id="menu-profile">${svgIcon('user')}الملف الشخصي</button>
+          <button id="menu-logout">${svgIcon('logout')}تسجيل الخروج</button>
+        </div>
+      ` : `
+        <button class="btn-google" id="google-signin">${svgIcon('google')}تسجيل الدخول بجوجل</button>
+      `}
+    </div>
+  </header>`;
+}
+
+function wireTopbar(){
+  const logo = document.getElementById('topbar-logo'); if(logo) logo.onclick = renderHome;
+  const navHome = document.getElementById('nav-home'); if(navHome) navHome.onclick = renderHome;
+  const navGames = document.getElementById('nav-games'); if(navGames) navGames.onclick = ()=>{
+    renderHome();
+    setTimeout(()=>{ const g=document.querySelector('.game-grid'); if(g) g.scrollIntoView({behavior:'smooth', block:'start'}); }, 60);
+  };
+  const gsi = document.getElementById('google-signin'); if(gsi) gsi.onclick = signInWithGoogle;
+  const menuBtn = document.getElementById('user-menu-btn');
+  const menu = document.getElementById('user-menu');
+  if(menuBtn && menu){
+    menuBtn.onclick = e=>{ e.stopPropagation(); menu.classList.toggle('open'); };
+    document.addEventListener('click', ()=> menu.classList.remove('open'), {once:true});
+  }
+  const mp = document.getElementById('menu-profile'); if(mp) mp.onclick = renderProfile;
+  const ml = document.getElementById('menu-logout'); if(ml) ml.onclick = signOutUser;
+}
+
+function footerHTML(){
+  return `<footer class="site-footer">
+    <div>© 2026 منصّة الألعاب — تطوير <strong>Core Code</strong></div>
+    <div class="footer-links">
+      <button id="footer-privacy">سياسة الخصوصية</button>
+      <button id="footer-about">عن المطوّرين</button>
+    </div>
+  </footer>`;
+}
+function wireFooter(){
+  const p = document.getElementById('footer-privacy'); if(p) p.onclick = renderPrivacy;
+  const a = document.getElementById('footer-about'); if(a) a.onclick = renderAbout;
+}
+
+function renderProfile(){
+  const user = auth.currentUser;
+  document.getElementById('app').innerHTML = `
+    ${topbarHTML()}
+    <div class="wrap">
+      <div class="card">
+        <div class="brand" style="margin-bottom:24px;">
+          ${user && user.photoURL ? `<img src="${escapeHTML(user.photoURL)}" style="width:64px;height:64px;border-radius:50%;margin:0 auto 14px; display:block;" alt="">` : `<div class="brand-mark">${svgLogo()}</div>`}
+          <h1 style="font-size:22px;">الملف الشخصي</h1>
+          ${user && !user.isAnonymous ? `<p style="margin-top:4px;">${escapeHTML(user.email||'')}</p>` : ''}
+        </div>
+        <div class="field">
+          <label>اسمك بالألعاب</label>
+          <input id="profile-name" value="${escapeHTML(state.name||'')}" maxlength="16">
+        </div>
+        <button class="btn btn-primary" id="save-profile" style="width:100%;">حفظ الاسم</button>
+        ${user && !user.isAnonymous
+          ? `<button class="btn btn-ghost" id="profile-logout" style="width:100%; margin-top:10px;">تسجيل الخروج</button>`
+          : `<div class="hint-row" style="justify-content:center; margin-top:14px;">${svgIcon('info')}سجّل الدخول بجوجل من الأعلى ليُحفظ اسمك تلقائياً بين الأجهزة</div>`}
+      </div>
+    </div>`;
+  wireTopbar();
+  document.getElementById('save-profile').onclick = async ()=>{
+    const name = sanitizeInput(document.getElementById('profile-name').value, 16);
+    if(!name){ toast("اكتب اسماً أولاً"); return; }
+    await saveProfileName(name);
+  };
+  const lo = document.getElementById('profile-logout'); if(lo) lo.onclick = signOutUser;
+}
+
+function renderPrivacy(){
+  document.getElementById('app').innerHTML = `
+    ${topbarHTML()}
+    <div class="wrap">
+      <div class="card card-wide">
+        <h2 style="margin-bottom:6px;">سياسة الخصوصية</h2>
+        <p style="color:var(--text-dim); font-size:12.5px; margin-bottom:18px;">آخر تحديث: 2026</p>
+        <div class="policy-content">
+          <h3>ما هي البيانات التي نجمعها؟</h3>
+          <p>الاسم الذي تدخله عند اللعب (أو اسم حساب جوجل إذا اخترت تسجيل الدخول)، صورتك الشخصية من جوجل إن وُجدت، وبيانات الجلسة داخل اللعبة فقط (كود الغرفة، نقاطك، اختياراتك أثناء الجولة).</p>
+          <h3>كيف نستخدم هذه البيانات؟</h3>
+          <p>فقط لتشغيل تجربة اللعب الجماعي: عرض اسمك للاعبين الآخرين بنفس الغرفة، حفظ نقاطك أثناء الجولة، وتذكّر اسمك إذا سجّلت الدخول. لا نستخدم بياناتك لأي غرض إعلاني، ولا نبيعها أو نشاركها مع أي طرف ثالث.</p>
+          <h3>أين تُخزَّن البيانات؟</h3>
+          <p>على خدمة Firebase التابعة لجوجل (Google Cloud)، وترتبط بيانات كل غرفة بتلك الجلسة فقط.</p>
+          <h3>تسجيل الدخول بجوجل</h3>
+          <p>تسجيل الدخول اختياري بالكامل — يمكنك اللعب كضيف بدون تسجيل دخول أبداً. إذا اخترت تسجيل الدخول، نستخدم اسمك وصورتك الشخصية العامة فقط لعرضهما داخل اللعبة.</p>
+          <h3>تواصل معنا</h3>
+          <p>لأي استفسار حول الخصوصية، تقدر تتواصل مع فريق Core Code المطوّر لهذه المنصّة.</p>
+          <p style="color:var(--text-dim); font-size:12px; margin-top:16px;">هذه سياسة مبسّطة لمنصّة ألعاب صغيرة بين الأصدقاء، وليست استشارة قانونية رسمية.</p>
+        </div>
+      </div>
+    </div>`;
+  wireTopbar();
+}
+
+function renderAbout(){
+  document.getElementById('app').innerHTML = `
+    ${topbarHTML()}
+    <div class="wrap">
+      <div class="card" style="text-align:center;">
+        <div class="brand-mark" style="margin:0 auto 16px;">${svgLogo()}</div>
+        <h2 style="margin-bottom:10px;">عن المطوّرين</h2>
+        <p style="color:var(--text-dim); font-size:14px; line-height:1.9;">
+          صُممت وطُوّرت هذه المنصّة بواسطة <strong style="color:var(--violet-2);">Core Code</strong> —
+          فريق مختص ببناء تجارب ويب تفاعلية وألعاب جماعية بسيطة وممتعة تُلعب مباشرة من المتصفح.
+        </p>
+      </div>
+    </div>`;
+  wireTopbar();
 }
 
 /* ---- custom dropdown: builds markup, then wireDropdown() attaches behavior after insertion ---- */

@@ -672,8 +672,8 @@ let PHOTO_CATEGORIES = [];   // تصنيفات صور حقيقية تُجلب ح
 let API_KEY = "";            // مفتاح Pexels API — يُضبط من لوحة التحكم
 
 const DEFAULT_PHOTO_CATEGORIES = [
-  {name:"أجهزة", query:"smartphone, laptop computer, tablet computer"},
-  {name:"حيوانات", query:"animal"}
+  {name:"أجهزة", query:"smartphone:هاتف, laptop computer:حاسوب, tablet computer:تابلت"},
+  {name:"حيوانات", query:"cat:قطة, dog:كلب, rabbit:أرنب, horse:حصان, lion:أسد, elephant:فيل, tiger:نمر, panda:باندا, sparrow:عصفور, fish:سمكة, cow:بقرة, sheep:خروف, goat:ماعز, pig:خنزير, chicken:دجاجة, duck:بطة, monkey:قرد, bear:دب, wolf:ذئب, fox:ثعلب, deer:غزال, zebra:حمار وحشي, giraffe:زرافة, kangaroo:كنغر, koala:كوالا, camel:جمل, donkey:حمار, squirrel:سنجاب, hedgehog:قنفذ, turtle:سلحفاة, frog:ضفدع, snake:أفعى, lizard:سحلية, crocodile:تمساح, shark:قرش, dolphin:دلفين, whale:حوت, seal animal:فقمة, penguin:بطريق, owl:بومة, eagle:نسر, parrot:ببغاء, peacock:طاووس, flamingo:نحام, swan:بجعة, butterfly:فراشة, bee:نحلة, spider:عنكبوت, octopus:أخطبوط, hippopotamus:فرس النهر"}
 ];
 
 const AVATAR_COLORS = ["#7c5cff","#22d3ee","#ff8a4c","#3ddc97","#ff5470","#ffd166","#5eead4","#c084fc"];
@@ -788,11 +788,15 @@ async function pickCategoryPhoto(categoryChoice){
     ? PHOTO_CATEGORIES[Math.floor(Math.random()*PHOTO_CATEGORIES.length)]
     : (PHOTO_CATEGORIES.find(c=>c.name===categoryChoice) || PHOTO_CATEGORIES[Math.floor(Math.random()*PHOTO_CATEGORIES.length)]);
   // يدعم أكثر من كلمة بحث مفصولة بفاصلة داخل نفس التصنيف (مثلاً "أجهزة" → phone, laptop, tablet)
-  // فتُختار كلمة واحدة محددة عشوائياً كل مرة، بدل كلمة عامة قد تُرجع صوراً مبهمة بعدة أشياء مع بعض
+  // فتُختار كلمة واحدة محددة عشوائياً كل مرة، بدل كلمة عامة قد تُرجع صوراً مبهمة بعدة أشياء مع بعض.
+  // كل كلمة تقدر تحمل اسمها العربي الخاص بصيغة "englishTerm:الاسم بالعربي"، وإلا يُستخدم اسم التصنيف العام كاحتياط.
   const terms = String(cat.query||'').split(',').map(t=>t.trim()).filter(Boolean);
-  const query = terms.length ? terms[Math.floor(Math.random()*terms.length)] : cat.query;
+  const picked = terms.length ? terms[Math.floor(Math.random()*terms.length)] : cat.query;
+  const parts = String(picked||'').split(':');
+  const query = (parts[0]||picked||'').trim();
+  const label = (parts[1]||'').trim() || cat.name;
   const url = await fetchRandomPhoto(query);
-  return url ? {word:cat.name, emoji:null, imageUrl:url} : null;
+  return url ? {word:label, emoji:null, imageUrl:url} : null;
 }
 
 /* العنصر الرئيسي لجولة "مين المختلف؟" — صورة حقيقية عبر API، وإلا كلمة/إيموجي كاحتياطي */

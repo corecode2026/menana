@@ -521,6 +521,15 @@ const DEFAULT_WORD_BANK = {
 let WORD_BANK = {};
 let ALL_CATEGORIES = [];
 let GUESS_IMAGES = [];       // صور لعبة "شو معي؟" المضافة يدوياً برابط من لوحة التحكم (احتياطي)
+let CHAIRS_SONGS = [];       // أغاني لعبة الكراسي الموسيقية المضافة برابط من لوحة التحكم
+
+/* مدى مدة تشغيل الموسيقى بالثواني (min,max) — تُختار مدة عشوائية ضمن المدى بكل جولة للحفاظ على عنصر المفاجأة */
+const MUSIC_RANGES = {
+  short:  [5, 10],
+  medium: [10, 20],
+  long:   [20, 35],
+  random: [5, 35]
+};
 let SETTINGS_DEFAULTS = {};  // إعدادات افتراضية لكل لعبة، تُعدّل من لوحة التحكم
 let PHOTO_CATEGORIES = [];   // تصنيفات صور حقيقية تُجلب حيّة عبر Pexels API (لاعبين، أجهزة، حيوانات...)
 let API_KEY = "";            // مفتاح Pexels API — يُضبط من لوحة التحكم
@@ -584,6 +593,10 @@ async function loadGameData(){
   const imgSnap = await db.ref('gameData/guessImages').get();
   GUESS_IMAGES = imgSnap.exists() ? Object.values(imgSnap.val()) : [];
   db.ref('gameData/guessImages').on('value', snap=>{ GUESS_IMAGES = snap.exists() ? Object.values(snap.val()) : []; });
+
+  const songsSnap = await db.ref('gameData/chairsSongs').get();
+  CHAIRS_SONGS = songsSnap.exists() ? Object.values(songsSnap.val()) : [];
+  db.ref('gameData/chairsSongs').on('value', snap=>{ CHAIRS_SONGS = snap.exists() ? Object.values(snap.val()) : []; });
 
   const defSnap = await db.ref('gameData/defaults').get();
   SETTINGS_DEFAULTS = defSnap.exists() ? defSnap.val() : {};
@@ -666,7 +679,8 @@ const state = {
   view: "home",
   timerInterval: null,
   soundOn: true,
-  listeners: []
+  listeners: [],
+  chairsAudio: null    // عنصر الصوت الحالي لأغنية الكراسي الموسيقية (لإيقافه عند تغيّر المرحلة)
 };
 
 /* =========================================================================
@@ -823,7 +837,7 @@ function route_afterAuthChange(){
 function defaultSettingsFor(gameId, maxPlayers){
   let base;
   if(gameId==="chairs"){
-    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, soundOn:true};
+    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, musicRange:"medium", soundOn:true};
   } else if(gameId==="guesswho"){
     base = {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
   } else {
@@ -877,7 +891,7 @@ function leaveRoom(){
   if(state.roomCode && state.uid){
     db.ref(`rooms/${state.roomCode}/players/${state.uid}/online`).set(false);
   }
-  detachListeners(); clearTimer();
+  detachListeners(); clearTimer(); stopLocalChairsAudio();
   state.roomCode=null; state.room=null; state.isHost=false; state.myAssignment=null; state.hasVoted=false; state.myVoteTarget=null;
   renderHome();
 }
@@ -1080,24 +1094,38 @@ async function startChairsMatch(){
 async function advanceChairsToMusic(){
   if(!state.isHost) return;
   const code = state.roomCode;
-  await db.ref(`rooms/${code}/round`).update({phase:"music", taps:{}});
+  const range = MUSIC_RANGES[state.room.settings.musicRange] || MUSIC_RANGES.medium;
+  const durationSec = range[0] + Math.random()*(range[1]-range[0]);
+  const song = CHAIRS_SONGS.length ? CHAIRS_SONGS[Math.floor(Math.random()*CHAIRS_SONGS.length)] : null;
+
+  await db.ref(`rooms/${code}/round`).update({
+    phase:"music", taps:{},
+    songUrl: song?song.url:null, songName: song?(song.name||''):'',
+    phaseEndAt: Date.now()+durationSec*1000
+  });
   await db.ref(`rooms/${code}/meta/phase`).set("music");
+
+  clearTimeout(advanceChairsToMusic._t);
+  advanceChairsToMusic._t = setTimeout(()=>{ stopMusicAndStartTap(); }, durationSec*1000);
 }
 
-/* الهوست يضغط لحظة عشوائية يختارها بنفسه — هذا هو جوهر لعبة الكراسي */
-async function hostStopMusic(){
+/* تُستدعى تلقائياً بعد انتهاء مدة الموسيقى — لا حاجة لضغطة يدوية من الهوست */
+async function stopMusicAndStartTap(){
   if(!state.isHost) return;
   const code = state.roomCode;
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="music") return; // انتقلت المرحلة أصلاً
   const seconds = (state.room.settings.tapWindowMs||1500)/1000;
   playSound('reveal');
   await db.ref(`rooms/${code}/round`).update({phase:"tap", taps:{}, phaseEndAt: Date.now()+seconds*1000});
   await db.ref(`rooms/${code}/meta/phase`).set("tap");
-  clearTimeout(hostStopMusic._t);
-  hostStopMusic._t = setTimeout(async ()=>{
-    const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
-    const round = snap.val();
-    if(!round || round.phase!=="tap") return;
-    finalizeChairsRound(round);
+  clearTimeout(stopMusicAndStartTap._t2);
+  stopMusicAndStartTap._t2 = setTimeout(async ()=>{
+    const s2 = await db.ref(`rooms/${state.roomCode}/round`).get();
+    const r2 = s2.val();
+    if(!r2 || r2.phase!=="tap") return;
+    finalizeChairsRound(r2);
   }, seconds*1000+150);
 }
 
@@ -1114,7 +1142,7 @@ async function submitChairsTap(){
     const snap = await db.ref(`rooms/${code}/round`).get();
     const r = snap.val();
     if(Object.keys(r.taps||{}).length >= r.activePlayers.length){
-      clearTimeout(hostStopMusic._t);
+      clearTimeout(stopMusicAndStartTap._t2);
       finalizeChairsRound(r);
     }
   }
@@ -1483,7 +1511,14 @@ function renderWaitingRoom(){
           <div class="segmented" id="set-eliminate">
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
           </div>
-        </div>` : gameType==="guesswho" ? `
+        </div>
+        <div class="field">
+          <label>مدة تشغيل الموسيقى</label>
+          <div class="segmented" id="set-musicrange">
+            ${[["short","قصيرة"],["medium","متوسطة"],["long","طويلة"],["random","عشوائية تماماً"]].map(([v,label])=>`<button data-v="${v}" class="${(settings.musicRange||'medium')===v?'active':''}">${label}</button>`).join('')}
+          </div>
+        </div>
+        <div class="hint-row">${svgIcon('info')}${CHAIRS_SONGS.length ? `${CHAIRS_SONGS.length} أغنية بالبنك — بتُختار عشوائياً كل جولة` : 'ما في أغاني مضافة بعد — رح تشتغل اللعبة بدون صوت. أضف أغاني من لوحة التحكم'}</div>` : gameType==="guesswho" ? `
         <div class="field">
           <label>تصنيف الصور</label>
           ${ddHTML('category-dd', [{v:"عشوائي", label:"🎲 عشوائي (كل التصنيفات)"}, ...(PHOTO_CATEGORIES.length?PHOTO_CATEGORIES.map(c=>c.name):ALL_CATEGORIES).map(c=>({v:c, label:c}))], settings.category)}
@@ -1576,6 +1611,7 @@ function renderWaitingRoom(){
   if(isHost){
     if(gameType==="chairs"){
       document.getElementById('set-eliminate').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/eliminatePerRound`).set(parseInt(e.target.dataset.v)); };
+      document.getElementById('set-musicrange').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/musicRange`).set(e.target.dataset.v); };
     } else if(gameType==="guesswho"){
       wireDropdown('category-dd', v=> db.ref(`rooms/${state.roomCode}/settings/category`).set(v));
       document.getElementById('set-rounds').onclick = e=>{ if(e.target.dataset.v) db.ref(`rooms/${state.roomCode}/settings/totalRounds`).set(parseInt(e.target.dataset.v)); };
@@ -1600,6 +1636,7 @@ function renderPlayingPhase(){
   const gameType = state.room.meta.gameType||"different";
 
   if(gameType==="chairs"){
+    if(round.phase!=="music") stopLocalChairsAudio();
     if(round.phase==="countdown") renderCountdown(round);
     else if(round.phase==="music") renderChairsMusic(round);
     else if(round.phase==="tap") renderChairsTap(round);
@@ -1775,7 +1812,9 @@ function renderChairsMusic(round){
     <div class="phase-eyebrow">الجولة ${round.index}</div>
     <div class="eq-bars">${'<div class="bar"></div>'.repeat(5)}</div>
     <h2 style="font-size:20px;">الموسيقى تشتغل 🎵</h2>
-    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}استعدوا للجلوس بسرعة لحظة ما تتوقف</div>
+    ${round.songName ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}${escapeHTML(round.songName)}</div>` : ''}
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}استعدوا للجلوس بسرعة لحظة ما تتوقف — ما حدا بيعرف الوقت غير الحظ!</div>
+    <button class="btn btn-secondary btn-sm" id="tap-to-play" style="display:none; margin-top:6px;">🔊 اضغط لتشغيل الصوت</button>
 
     <div class="section-title" style="width:100%;">اللاعبون المتبقون (${players.length})</div>
     <div class="player-list" style="width:100%;">
@@ -1786,11 +1825,28 @@ function renderChairsMusic(round){
         </div>`).join('')}
     </div>
 
-    ${state.isHost ? `<button class="btn btn-danger" id="stop-music" style="margin-top:20px; font-size:18px; padding:18px;">⏹ قف الموسيقى الآن!</button>`
-      : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}الهوست يتحكم بلحظة التوقف…</div>`}
+    <div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}الموسيقى رح توقف لحالها بلحظة عشوائية…</div>
     ${!round.activePlayers.includes(state.uid) ? `<div class="spectator-note">أنت مُقصى من هذه الجولة — تابع اللعبة كمشاهد 👀</div>` : ''}
   </div></div>`;
-  if(state.isHost) document.getElementById('stop-music').onclick = hostStopMusic;
+
+  if(round.songUrl){
+    const audio = new Audio(round.songUrl);
+    audio.loop = true;
+    state.chairsAudio = audio;
+    const tryPlayBtn = document.getElementById('tap-to-play');
+    audio.play().catch(()=>{
+      // بعض المتصفحات (خصوصاً بالموبايل) بتمنع تشغيل الصوت التلقائي — نعرض زر تشغيل يدوي بديل
+      if(tryPlayBtn){
+        tryPlayBtn.style.display = 'inline-flex';
+        tryPlayBtn.onclick = ()=>{ audio.play().catch(()=>{}); tryPlayBtn.style.display='none'; };
+      }
+    });
+  }
+}
+
+/* يوقف أي صوت شغّال محلياً عند مغادرة مرحلة الموسيقى (تغيّر الشاشة بيشيل العنصر تلقائياً، بس هذا احتياط إضافي) */
+function stopLocalChairsAudio(){
+  if(state.chairsAudio){ try{ state.chairsAudio.pause(); }catch(e){} state.chairsAudio = null; }
 }
 
 function renderChairsTap(round){

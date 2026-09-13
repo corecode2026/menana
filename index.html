@@ -174,10 +174,16 @@ input{font-family:var(--font-body);}
 .game-tile:hover .t-play{background:var(--violet); border-color:var(--violet);}
 
 .quick-join{
-  display:flex; align-items:center; justify-content:center; gap:8px; margin-top:26px;
-  color:var(--text-dim); font-size:13px; font-weight:600;
+  display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:24px;
+  padding:16px 22px; border-radius:16px; flex-wrap:wrap; text-align:center;
+  background:rgba(124,92,255,0.12); border:1px solid rgba(124,92,255,0.35);
+  color:var(--text); font-size:15px; font-weight:700;
 }
-.quick-join button{color:var(--violet-2); font-weight:800; text-decoration:underline; background:none; border:none; font-size:13px;}
+.quick-join button{
+  color:#fff; font-weight:800; font-size:14.5px; background:var(--violet); border:none;
+  padding:9px 18px; border-radius:100px; box-shadow:0 8px 20px rgba(124,92,255,0.4);
+}
+.quick-join button:hover{filter:brightness(1.08);}
 
 /* ---- top navigation bar ---- */
 .topbar{
@@ -1671,6 +1677,10 @@ function renderHome(){
         </div>
       </div>
 
+      <div class="quick-join">
+        عندك كود غرفة جاهز؟ <button id="quick-join-btn">ادخل مباشرة</button>
+      </div>
+
       <div class="game-grid">
         ${GAMES.map(g=>`
           <button class="game-tile" data-g="${g.id}">
@@ -1684,10 +1694,6 @@ function renderHome(){
               </div>
             </div>
           </button>`).join('')}
-      </div>
-
-      <div class="quick-join">
-        عندك كود غرفة جاهز؟ <button id="quick-join-btn">ادخل مباشرة</button>
       </div>
     </div>
   </div>

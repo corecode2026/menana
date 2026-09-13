@@ -610,7 +610,7 @@ let PHOTO_CATEGORIES = [];   // تصنيفات صور حقيقية تُجلب ح
 let API_KEY = "";            // مفتاح Pexels API — يُضبط من لوحة التحكم
 
 const DEFAULT_PHOTO_CATEGORIES = [
-  {name:"أجهزة", query:"electronic device"},
+  {name:"أجهزة", query:"smartphone, laptop computer, tablet computer"},
   {name:"حيوانات", query:"animal"}
 ];
 
@@ -720,7 +720,11 @@ async function pickCategoryPhoto(categoryChoice){
   const cat = (!categoryChoice || categoryChoice==="عشوائي")
     ? PHOTO_CATEGORIES[Math.floor(Math.random()*PHOTO_CATEGORIES.length)]
     : (PHOTO_CATEGORIES.find(c=>c.name===categoryChoice) || PHOTO_CATEGORIES[Math.floor(Math.random()*PHOTO_CATEGORIES.length)]);
-  const url = await fetchRandomPhoto(cat.query);
+  // يدعم أكثر من كلمة بحث مفصولة بفاصلة داخل نفس التصنيف (مثلاً "أجهزة" → phone, laptop, tablet)
+  // فتُختار كلمة واحدة محددة عشوائياً كل مرة، بدل كلمة عامة قد تُرجع صوراً مبهمة بعدة أشياء مع بعض
+  const terms = String(cat.query||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const query = terms.length ? terms[Math.floor(Math.random()*terms.length)] : cat.query;
+  const url = await fetchRandomPhoto(query);
   return url ? {word:cat.name, emoji:null, imageUrl:url} : null;
 }
 

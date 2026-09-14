@@ -79,6 +79,7 @@ button{font-family:var(--font-body); cursor:pointer; border:none;}
 .img-tile{position:relative; border-radius:12px; overflow:hidden; border:1px solid var(--border); aspect-ratio:1; background:rgba(255,255,255,0.03);}
 .img-tile img{width:100%; height:100%; object-fit:cover; display:block;}
 .img-tile .img-del{position:absolute; top:5px; left:5px; width:24px; height:24px; border-radius:7px; background:rgba(0,0,0,0.65); color:#ff8fa3; display:flex; align-items:center; justify-content:center; font-size:12px;}
+.img-tile .img-edit{position:absolute; top:5px; right:5px; width:24px; height:24px; border-radius:7px; background:rgba(0,0,0,0.65); color:var(--violet-2); display:flex; align-items:center; justify-content:center; font-size:12px;}
 .img-tile .img-label{position:absolute; bottom:0; inset-inline:0; background:rgba(0,0,0,0.65); color:#fff; font-size:10px; padding:4px 6px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .upload-status{font-size:12.5px; color:var(--text-dim); margin-top:8px; min-height:16px;}
 .divider{height:1px; background:var(--border); margin:18px 0;}
@@ -501,6 +502,25 @@ async function loadAllDefaults(){
 }
 
 /* ---- بنك أسئلة سين جيم ---- */
+let TRIVIA_QUESTIONS_CACHE = {};
+
+function startEditTriviaQuestion(key){
+  const q = TRIVIA_QUESTIONS_CACHE[key];
+  if(!q) return;
+  document.getElementById('tq-category').value = q.category || '';
+  document.querySelectorAll('#tq-points button').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.v,10)===(q.points||100)));
+  document.getElementById('tq-question').value = q.question || '';
+  document.getElementById('tq-answer').value = q.answer || '';
+  document.querySelectorAll('#tq-mediatype button').forEach(b=>b.classList.toggle('active', b.dataset.v===(q.mediaType||'none')));
+  document.getElementById('tq-media-field').style.display = (q.mediaType && q.mediaType!=='none') ? 'block' : 'none';
+  document.getElementById('tq-media-file').value = '';
+  const addBtn = document.getElementById('add-question');
+  addBtn.textContent = '💾 حفظ التعديل';
+  addBtn.dataset.editKey = key;
+  addBtn.dataset.editMediaUrl = q.mediaUrl || '';
+  document.getElementById('tq-category').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
 function wireTriviaQuestionForm(){
   document.querySelectorAll('#tq-points button').forEach(btn=>{
     btn.onclick = ()=>{
@@ -515,7 +535,7 @@ function wireTriviaQuestionForm(){
       document.getElementById('tq-media-field').style.display = btn.dataset.v==="none" ? 'none' : 'block';
     };
   });
-  document.getElementById('add-question').onclick = async ()=>{
+  document.getElementById('add-question').onclick = async function(){
     const category = document.getElementById('tq-category').value.trim();
     const pointsBtn = document.querySelector('#tq-points button.active');
     const points = pointsBtn ? parseInt(pointsBtn.dataset.v,10) : 100;
@@ -526,12 +546,13 @@ function wireTriviaQuestionForm(){
     const fileInput = document.getElementById('tq-media-file');
     const file = fileInput.files[0];
     const statusEl = document.getElementById('tq-upload-status');
+    const isEdit = !!this.dataset.editKey;
 
     if(!category || !question || !answer){ toast("عبّي الفئة والسؤال والإجابة الصحيحة"); return; }
-    if(mediaType!=="none" && !file){ toast("اختر ملف الصورة أو الفيديو من جهازك"); return; }
+    if(mediaType!=="none" && !file && !(isEdit && this.dataset.editMediaUrl)){ toast("اختر ملف الصورة أو الفيديو من جهازك"); return; }
 
-    let mediaUrl = '';
-    if(mediaType!=="none"){
+    let mediaUrl = (isEdit && mediaType!=="none") ? (this.dataset.editMediaUrl||'') : '';
+    if(mediaType!=="none" && file){
       const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
       const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
       if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
@@ -556,15 +577,27 @@ function wireTriviaQuestionForm(){
       }
     }
 
-    await db.ref('gameData/triviaQuestions').push({category, points, question, answer, mediaType, mediaUrl});
+    const payload = {category, points, question, answer, mediaType, mediaUrl};
+    if(isEdit){
+      await db.ref(`gameData/triviaQuestions/${this.dataset.editKey}`).set(payload);
+      delete this.dataset.editKey; delete this.dataset.editMediaUrl;
+      this.textContent = '+ إضافة سؤال';
+      toast("تم حفظ التعديل ✅");
+    } else {
+      await db.ref('gameData/triviaQuestions').push(payload);
+      toast("تمت الإضافة ✅");
+    }
+
+    if(isEdit) document.getElementById('tq-category').value = '';
     document.getElementById('tq-question').value = '';
     document.getElementById('tq-answer').value = '';
     fileInput.value = '';
+    document.querySelectorAll('#tq-points button').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#tq-points button[data-v="100"]').classList.add('active');
     document.querySelectorAll('#tq-mediatype button').forEach(b=>b.classList.remove('active'));
     document.querySelector('#tq-mediatype button[data-v="none"]').classList.add('active');
     document.getElementById('tq-media-field').style.display = 'none';
     if(statusEl) statusEl.textContent = '';
-    toast("تمت الإضافة ✅");
     loadTriviaQuestions();
   };
 }
@@ -572,8 +605,9 @@ function wireTriviaQuestionForm(){
 async function loadTriviaQuestions(){
   const list = document.getElementById('trivia-questions-list');
   const snap = await db.ref('gameData/triviaQuestions').get();
-  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أسئلة بعد — أضف أول سؤال تحت.</p>`; return; }
+  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد أسئلة بعد — أضف أول سؤال تحت.</p>`; TRIVIA_QUESTIONS_CACHE = {}; return; }
   const data = snap.val();
+  TRIVIA_QUESTIONS_CACHE = data;
   // نجمّعها حسب الفئة عشان يسهل تشوف نواقص اللوحة (كل فئة لازم يكون فيها كذا مستوى نقاط)
   const byCategory = {};
   Object.entries(data).forEach(([key,q])=>{
@@ -593,12 +627,16 @@ async function loadTriviaQuestions(){
               <strong style="color:var(--violet-2);">${q.points||100} نقطة</strong> ${q.mediaType==='image'?'🖼️':q.mediaType==='video'?'🎬':''} — ${escapeHTML(q.question)}
               <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">✅ ${escapeHTML(q.answer||'')}</div>
             </div>
+            <button class="btn-icon edit-question" data-key="${escapeHTML(q.key)}" title="تعديل" style="background:rgba(124,92,255,0.14); color:var(--violet-2);">✎</button>
             <button class="del" data-key="${escapeHTML(q.key)}">حذف</button>
           </div>`).join('')}
       </div>
     </div>`).join('');
   list.querySelectorAll('.cat-head').forEach(head=>{
     head.addEventListener('click', ()=> head.closest('.cat-block').classList.toggle('open'));
+  });
+  list.querySelectorAll('.edit-question').forEach(btn=>{
+    btn.onclick = ()=> startEditTriviaQuestion(btn.dataset.key);
   });
   list.querySelectorAll('.del').forEach(btn=>{
     btn.onclick = async ()=>{
@@ -610,55 +648,88 @@ async function loadTriviaQuestions(){
 }
 
 /* ---- صور فئات سين جيم ---- */
+let TRIVIA_CAT_IMAGES_CACHE = {};
+
+function startEditTriviaCategoryImage(key){
+  const c = TRIVIA_CAT_IMAGES_CACHE[key];
+  if(!c) return;
+  document.getElementById('tci-category').value = c.category || '';
+  document.getElementById('tci-file').value = '';
+  const addBtn = document.getElementById('add-cat-image');
+  addBtn.textContent = '💾 حفظ التعديل';
+  addBtn.dataset.editKey = key;
+  addBtn.dataset.editImageUrl = c.imageUrl || '';
+  document.getElementById('tci-category').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
 function wireTriviaCategoryImageForm(){
-  document.getElementById('add-cat-image').onclick = async ()=>{
+  document.getElementById('add-cat-image').onclick = async function(){
     const category = document.getElementById('tci-category').value.trim();
     const fileInput = document.getElementById('tci-file');
     const file = fileInput.files[0];
     const statusEl = document.getElementById('tci-upload-status');
+    const isEdit = !!this.dataset.editKey;
     if(!category){ toast("اكتب اسم الفئة أولاً"); return; }
-    if(!file){ toast("اختر صورة من جهازك"); return; }
+    if(!file && !(isEdit && this.dataset.editImageUrl)){ toast("اختر صورة من جهازك"); return; }
 
-    const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
-    const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
-    if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
-      toast("لازم تعبّي إعداد الرفع (Cloud name وUpload preset) بتبويب \"الكراسي الموسيقية\" أولاً");
-      return;
+    let imageUrl = isEdit ? (this.dataset.editImageUrl||'') : '';
+    if(file){
+      const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
+      const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
+      if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
+        toast("لازم تعبّي إعداد الرفع (Cloud name وUpload preset) بتبويب \"الكراسي الموسيقية\" أولاً");
+        return;
+      }
+      if(statusEl) statusEl.textContent = "جارِ الرفع…";
+      try{
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', cfg.uploadPreset);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {method:'POST', body:formData});
+        const data = await res.json();
+        if(!res.ok || !data.secure_url) throw new Error(data.error ? data.error.message : 'فشل الرفع');
+        imageUrl = data.secure_url;
+        if(statusEl) statusEl.textContent = "تم الرفع ✅";
+      }catch(err){
+        console.error(err);
+        if(statusEl) statusEl.textContent = "فشل الرفع — تأكد من إعداد Cloudinary";
+        toast("فشل رفع الصورة");
+        return;
+      }
     }
 
-    if(statusEl) statusEl.textContent = "جارِ الرفع…";
-    try{
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', cfg.uploadPreset);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {method:'POST', body:formData});
-      const data = await res.json();
-      if(!res.ok || !data.secure_url) throw new Error(data.error ? data.error.message : 'فشل الرفع');
-      await db.ref('gameData/triviaCategoryImages').push({category, imageUrl:data.secure_url});
-      if(statusEl) statusEl.textContent = "تم الرفع ✅";
-      document.getElementById('tci-category').value = '';
-      fileInput.value = '';
+    if(isEdit){
+      await db.ref(`gameData/triviaCategoryImages/${this.dataset.editKey}`).set({category, imageUrl});
+      delete this.dataset.editKey; delete this.dataset.editImageUrl;
+      this.textContent = '+ إضافة صورة الفئة';
+      toast("تم حفظ التعديل ✅");
+    } else {
+      await db.ref('gameData/triviaCategoryImages').push({category, imageUrl});
       toast("تمت الإضافة ✅");
-      loadTriviaCategoryImages();
-    }catch(err){
-      console.error(err);
-      if(statusEl) statusEl.textContent = "فشل الرفع — تأكد من إعداد Cloudinary";
-      toast("فشل رفع الصورة");
     }
+    document.getElementById('tci-category').value = '';
+    fileInput.value = '';
+    if(statusEl) statusEl.textContent = '';
+    loadTriviaCategoryImages();
   };
 }
 
 async function loadTriviaCategoryImages(){
   const list = document.getElementById('trivia-cat-images-list');
   const snap = await db.ref('gameData/triviaCategoryImages').get();
-  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد صور فئات بعد — اختيارية بالكامل.</p>`; return; }
+  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد صور فئات بعد — اختيارية بالكامل.</p>`; TRIVIA_CAT_IMAGES_CACHE = {}; return; }
   const data = snap.val();
+  TRIVIA_CAT_IMAGES_CACHE = data;
   list.innerHTML = `<div class="img-grid">${Object.entries(data).map(([key,c])=>`
     <div class="img-tile">
       <img src="${escapeHTML(c.imageUrl)}" alt="" loading="lazy">
       <button class="img-del" data-key="${escapeHTML(key)}">✕</button>
+      <button class="img-edit" data-key="${escapeHTML(key)}">✎</button>
       <div class="img-label">${escapeHTML(c.category)}</div>
     </div>`).join('')}</div>`;
+  list.querySelectorAll('.img-edit').forEach(btn=>{
+    btn.onclick = ()=> startEditTriviaCategoryImage(btn.dataset.key);
+  });
   list.querySelectorAll('.img-del').forEach(btn=>{
     btn.onclick = async ()=>{
       if(!confirm("حذف صورة هذه الفئة؟")) return;

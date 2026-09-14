@@ -1441,13 +1441,9 @@ async function advanceToDiscussion(){
 async function advanceToVoting(){
   if(!state.isHost) return;
   const code = state.roomCode;
-  const seconds = (state.room.settings.voteSeconds)||25;
-  await db.ref(`rooms/${code}/round`).update({phase:"voting", phaseEndAt: Date.now()+seconds*1000});
+  await db.ref(`rooms/${code}/round`).update({phase:"voting", phaseEndAt:0});
   await db.ref(`rooms/${code}/meta/phase`).set("voting");
-  clearTimeout(scheduleVoteTimeout._t);
-  scheduleVoteTimeout._t = setTimeout(()=>finishVoting(), seconds*1000+150);
 }
-function scheduleVoteTimeout(){}
 
 async function finishVoting(){
   if(!state.isHost) return;
@@ -1477,8 +1473,84 @@ async function finishVoting(){
   });
 
   await db.ref(`rooms/${state.roomCode}`).update(scoreUpdates);
-  await db.ref(`rooms/${state.roomCode}/round`).update({phase:"results", majorityCaught, phaseEndAt:0});
-  await db.ref(`rooms/${state.roomCode}/meta/phase`).set("results");
+
+  if(majorityCaught && round.oddPlayers && round.oddPlayers.length){
+    // فرصة أخيرة: الشخص المختلف انكشف، بس إذا خمّن الكلمة/الصورة صح من قائمة، بيعوّض بعض نقاطه
+    const options = buildOddGuessOptions(round);
+    await db.ref(`rooms/${state.roomCode}/round`).update({
+      phase:"oddGuess", majorityCaught, oddGuessOptions: options, oddGuesses:{}, phaseEndAt:0
+    });
+    await db.ref(`rooms/${state.roomCode}/meta/phase`).set("oddGuess");
+  } else {
+    await db.ref(`rooms/${state.roomCode}/round`).update({phase:"results", majorityCaught, phaseEndAt:0});
+    await db.ref(`rooms/${state.roomCode}/meta/phase`).set("results");
+  }
+}
+
+/* يبني قائمة اختيارات لتخمين الشخص المختلف: الكلمة الصحيحة + عدة كلمات بديلة عشوائية */
+function buildOddGuessOptions(round){
+  const correct = round.mainWord;
+  let pool = [];
+  PHOTO_CATEGORIES.forEach(cat=>{
+    String(cat.query||'').split(',').forEach(term=>{
+      const parts = term.split(':');
+      const label = (parts[1]||parts[0]||'').trim();
+      if(label && label!==correct) pool.push(label);
+    });
+  });
+  if(pool.length < 3){
+    Object.values(WORD_BANK).forEach(words=>{
+      words.forEach(([w])=>{ if(w && w!==correct) pool.push(w); });
+    });
+  }
+  pool = [...new Set(pool)];
+  const distractors = shuffleArr(pool).slice(0,3);
+  return shuffleArr([correct, ...distractors]);
+}
+
+/* الشخص المختلف يختار تخمينه من القائمة */
+async function submitOddGuess(word){
+  const round = state.room.round;
+  const code = state.roomCode;
+  if(!round || round.phase!=="oddGuess") return;
+  if(!round.oddPlayers.includes(state.uid)) return;
+  if(round.oddGuesses && round.oddGuesses[state.uid]) return;
+  await db.ref(`rooms/${code}/round/oddGuesses/${state.uid}`).set(word);
+  if(state.isHost){
+    const snap = await db.ref(`rooms/${code}/round`).get();
+    const r = snap.val();
+    if(Object.keys(r.oddGuesses||{}).length >= r.oddPlayers.length){ finalizeOddGuess(); }
+  }
+}
+
+async function finalizeOddGuess(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="oddGuess") return;
+  const guesses = round.oddGuesses||{};
+  const correct = round.mainWord;
+  const players = state.room.players;
+  const scoreUpdates = {};
+  const redeemed = [];
+  (round.oddPlayers||[]).forEach(uid=>{
+    if(guesses[uid] && guesses[uid]===correct){
+      scoreUpdates[`players/${uid}/score`] = (players[uid].score||0) + 100;
+      redeemed.push(uid);
+    }
+  });
+  if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
+  await db.ref(`rooms/${code}/round`).update({phase:"results", redeemed, phaseEndAt:0});
+  await db.ref(`rooms/${code}/meta/phase`).set("results");
+}
+
+/* الهوست يقدر ينهي فرصة التخمين مبكراً لو تأخر الشخص المختلف */
+async function skipOddGuess(){
+  if(!state.isHost) return;
+  const round = state.room.round;
+  if(!round || round.phase!=="oddGuess") return;
+  finalizeOddGuess();
 }
 
 async function nextRoundOrFinish(){
@@ -1851,19 +1923,25 @@ function submitLiveGuess(text){
 }
 
 /* الرسّام (وهو الوحيد يلي يعرف الكلمة الصحيحة) بيراقب كل التخمينات الحيّة، وبمجرد ما توحدة توصل نفس الكلمة، تُعلَّم صح تلقائياً */
+let _lastLiveGuessesJSON = null;
 function watchLiveGuessesAsDrawer(round){
   if(state.uid !== round.drawerUid) return;
+  const liveGuesses = round.liveGuesses||{};
+  const json = JSON.stringify(liveGuesses);
+  if(json === _lastLiveGuessesJSON) return; // ما تغيّر شي بالتخمينات (النداء صار بسبب تحديث تاني متل خط رسم) — لا داعي نعيد الفحص
+  _lastLiveGuessesJSON = json;
+
   const myWord = state.myAssignment ? state.myAssignment.word : null;
   if(!myWord) return;
   const targetNorm = normalizeGuessText(myWord);
-  if(!targetNorm) return;
-  const liveGuesses = round.liveGuesses||{};
+  if(!targetNorm || targetNorm.length < 2) return; // حماية إضافية من تطابق كلمات قصيرة جداً بالغلط
   const already = round.correctGuessers||{};
   let nextRank = Object.keys(already).length + 1;
   Object.entries(liveGuesses).forEach(([uid, text])=>{
     if(uid===round.drawerUid) return;
     if(already[uid]!==undefined) return;
-    if(normalizeGuessText(text) === targetNorm){
+    const guessNorm = normalizeGuessText(text);
+    if(guessNorm && guessNorm === targetNorm){
       db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(nextRank).catch(()=>{});
       already[uid] = nextRank; // نمنع معالجة نفس الشخص مرتين خلال نفس الاستدعاء لو توازت عدة تطابقات
       nextRank++;
@@ -2486,6 +2564,7 @@ function renderPlayingPhase(){
     else if(round.phase==="reveal") renderReveal(round);
     else if(round.phase==="discussion") renderDiscussion(round);
     else if(round.phase==="voting") renderVoting(round);
+    else if(round.phase==="oddGuess") renderOddGuess(round);
     else if(round.phase==="results") renderResults(round);
   }
   injectGameControls();
@@ -2659,12 +2738,10 @@ function renderVoting(round){
   const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false);
   const votes = round.votes||{};
   const myVote = votes[state.uid];
-  const remaining = Math.max(0, round.phaseEndAt - Date.now());
-  const total = (state.room.settings.voteSeconds||25)*1000;
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="phase-eyebrow">من برأيك "المختلف"؟</div>
-    ${timerRingHTML(true)}
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}صوّتوا براحتكم — ما في وقت محدد، بننتقل بمجرد ما يصوّت الكل</div>
     <div class="vote-grid">
       ${players.map(([uid,p])=>`
         <button class="vote-card ${myVote===uid?'selected':''} ${uid===state.uid||myVote?'disabled':''}" data-uid="${uid}" ${uid===state.uid?'disabled':''}>
@@ -2677,8 +2754,6 @@ function renderVoting(round){
     ${state.isHost ? `<button class="btn btn-secondary btn-sm" id="end-voting-now" style="margin-top:14px;">⏹ إنهاء التصويت الآن</button>` : ''}
   </div></div>`;
 
-  startRingCountdown(total, remaining, ()=>{});
-
   if(!myVote){
     document.querySelectorAll('.vote-card').forEach(btn=>{
       btn.onclick = ()=>{ if(btn.dataset.uid!==state.uid) submitVote(btn.dataset.uid); };
@@ -2686,6 +2761,38 @@ function renderVoting(round){
   }
   const endBtn = document.getElementById('end-voting-now');
   if(endBtn) endBtn.onclick = function(){ this.disabled = true; this.textContent = 'جارِ الإنهاء…'; finishVoting(); };
+}
+
+/* فرصة أخيرة: الشخص المختلف انكشف، وعنده فرصة يخمّن الكلمة/الصورة الحقيقية من قائمة ليعوّض نقاطه */
+function renderOddGuess(round){
+  const amOdd = round.oddPlayers && round.oddPlayers.includes(state.uid);
+  const myGuess = round.oddGuesses ? round.oddGuesses[state.uid] : null;
+  const guessedCount = Object.keys(round.oddGuesses||{}).length;
+  const totalOdd = (round.oddPlayers||[]).length;
+
+  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
+    <div class="phase-eyebrow">🕵️ تم اكتشافك! فرصة أخيرة</div>
+    <h2 style="font-size:19px; text-align:center; line-height:1.5;">
+      ${amOdd ? 'خمّن شو كانت الصورة عشان تعوّض نقاطك!' : 'الشخص المختلف عم يحاول يخمّن الصورة الحقيقية...'}
+    </h2>
+
+    ${amOdd ? `
+      <div class="chip-grid" style="justify-content:center;" id="odd-guess-options">
+        ${(round.oddGuessOptions||[]).map(w=>`<button class="chip ${myGuess===w?'active':''}" data-w="${escapeHTML(w)}" ${myGuess?'disabled':''}>${escapeHTML(w)}</button>`).join('')}
+      </div>
+      ${myGuess ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}اخترت "${escapeHTML(myGuess)}" — بانتظار الباقي</div>` : ''}
+    ` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}${guessedCount}/${totalOdd} خمّنوا لحد هلق</div>`}
+
+    ${state.isHost ? `<button class="btn btn-secondary btn-sm" id="skip-odd-guess" style="margin-top:16px;">⏹ إنهاء الفرصة الآن</button>` : ''}
+  </div></div>`;
+
+  if(amOdd && !myGuess){
+    document.querySelectorAll('#odd-guess-options .chip').forEach(btn=>{
+      btn.onclick = ()=> submitOddGuess(btn.dataset.w);
+    });
+  }
+  const skipBtn = document.getElementById('skip-odd-guess');
+  if(skipBtn) skipBtn.onclick = function(){ this.disabled = true; skipOddGuess(); };
 }
 
 function renderResults(round){
@@ -2704,6 +2811,11 @@ function renderResults(round){
     <div class="result-banner ${majorityCaught?'result-win':'result-lose'}">
       ${majorityCaught?'الفريق اكتشف المختلف! 🎉':'المختلف نجا بخداعه! 🕵️'}
     </div>
+    ${round.redeemed && round.redeemed.length ? `
+      <div class="hint-row" style="justify-content:center;">${svgIcon('info')}${round.redeemed.map(uid=>escapeHTML(players[uid]?players[uid].name:'')).join(' و ')} خمّن الصورة صح وعوّض 100 نقطة! 🎯</div>
+    ` : (round.oddGuesses && Object.keys(round.oddGuesses).length ? `
+      <div class="hint-row" style="justify-content:center;">${svgIcon('info')}ما ظبطوا التخمين — ولا نقاط تعويضية هالمرة</div>
+    ` : '')}
     <div class="phase-eyebrow">${round.oddPlayers.length>1?'اللاعبون المختلفون كانوا':'اللاعب المختلف كان'}</div>
     <div class="reveal-name">${round.oddPlayers.map(uid=>escapeHTML(players[uid]?players[uid].name:'')).join(' و ')}</div>
     <div class="hint-row" style="justify-content:center;">${svgIcon('info')}${round.oddPlayers.length>1?'لم يكونوا يعرفون الكلمة إطلاقاً':'لم يكن يعرف الكلمة إطلاقاً'}</div>
@@ -3063,11 +3175,22 @@ function renderDrawPhase(round){
   clearRef.on('value', onClear);
   state.drawListeners.push([clearRef, 'value', onClear]);
 
-  // مستمع مخصّص يحدّث لوحة "شو الكل قاعد يكتب" فقط، بدون لمس لوحة الرسم إطلاقاً
-  const roundGuessRef = db.ref(`rooms/${state.roomCode}/round`);
-  const onRoundForGuesses = snap=>{ const r = snap.val(); if(r) updateLiveGuessPanel(r); };
-  roundGuessRef.on('value', onRoundForGuesses);
-  state.drawListeners.push([roundGuessRef, 'value', onRoundForGuesses]);
+  // مستمعان مخصّصان يحدّثان لوحة "شو الكل قاعد يكتب" بس (مسارين ضيّقين تحديداً) —
+  // نتجنّب الاستماع لكامل عقدة "round" لأنها تشمل "strokes" اللي بتتحدث عشرات المرات
+  // بالثانية أثناء الرسم، وكانت تسبب إعادة بناء اللوحة بمعدل جنوني وتُعلّق المتصفح
+  const liveGuessesRef = db.ref(`rooms/${state.roomCode}/round/liveGuesses`);
+  const onLiveGuessesChange = snap=>{
+    updateLiveGuessPanel(Object.assign({}, state.room.round, {liveGuesses: snap.val()||{}}));
+  };
+  liveGuessesRef.on('value', onLiveGuessesChange);
+  state.drawListeners.push([liveGuessesRef, 'value', onLiveGuessesChange]);
+
+  const correctGuessersRef = db.ref(`rooms/${state.roomCode}/round/correctGuessers`);
+  const onCorrectGuessersChange = snap=>{
+    updateLiveGuessPanel(Object.assign({}, state.room.round, {correctGuessers: snap.val()||{}}));
+  };
+  correctGuessersRef.on('value', onCorrectGuessersChange);
+  state.drawListeners.push([correctGuessersRef, 'value', onCorrectGuessersChange]);
 
   if(isDrawer){
     let color = "#1a1a1a", size = 5;

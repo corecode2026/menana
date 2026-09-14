@@ -599,6 +599,15 @@ input{font-family:var(--font-body);}
   width:100%; padding:18px; border-radius:16px; background:var(--panel); border:1px solid var(--border); text-align:center; margin-bottom:16px;
 }
 .turn-banner .who{font-family:var(--font-display); font-weight:800; font-size:22px; margin-top:4px;}
+
+.ask-pair-banner{
+  width:100%; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+  padding:16px 18px; border-radius:16px; margin-bottom:16px;
+  background:linear-gradient(135deg, rgba(124,92,255,0.14), rgba(34,211,238,0.1));
+  border:1px solid rgba(124,92,255,0.3);
+}
+.ask-pair-banner .ask-name{font-family:var(--font-display); font-weight:900; font-size:19px; color:#fff;}
+.ask-pair-banner .ask-verb{font-size:13px; color:var(--text-dim); font-weight:700;}
 .hints-log{display:flex; flex-direction:column; gap:10px; width:100%; max-width:440px;}
 .hint-item{
   display:flex; align-items:center; gap:12px; padding:12px 14px; background:rgba(255,255,255,0.035);
@@ -651,15 +660,24 @@ input{font-family:var(--font-body);}
 @keyframes eqbounce{0%,100%{transform:scaleY(0.4);} 50%{transform:scaleY(1);}}
 .eq-bars.stopped .bar{animation:none; transform:scaleY(0.15);}
 
-.tap-btn{
-  width:220px; height:220px; border-radius:50%; border:none;
-  background:radial-gradient(circle at 35% 30%, var(--violet-2), var(--violet) 60%, #5136c9);
-  color:#fff; font-family:var(--font-display); font-weight:900; font-size:22px;
-  box-shadow:0 20px 50px rgba(124,92,255,0.4), inset 0 -8px 20px rgba(0,0,0,0.25);
-  display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.4; padding:16px;
+.tap-arena{position:relative; width:100%; height:240px; margin-top:8px;}
+.tap-circle{
+  position:absolute; width:98px; height:98px; border-radius:50%; border:3px solid rgba(255,255,255,0.35);
+  transform:translate(-50%,-50%); color:#fff; font-family:var(--font-display); font-weight:900; font-size:16px;
+  animation:tapPulse 1.15s ease-in-out infinite;
 }
-.tap-btn:active{transform:scale(0.94);}
-.tap-btn[disabled]{opacity:0.5; background:rgba(255,255,255,0.08); box-shadow:none;}
+.tap-circle.c0{background:radial-gradient(circle at 35% 30%, #ff9a5c, #d43a1f 65%); box-shadow:0 14px 34px rgba(212,58,31,0.45);}
+.tap-circle.c1{background:radial-gradient(circle at 35% 30%, var(--violet-2), var(--violet) 65%); box-shadow:0 14px 34px rgba(124,92,255,0.45);}
+.tap-circle:active{transform:translate(-50%,-50%) scale(0.88);}
+@keyframes tapPulse{
+  0%{box-shadow:0 0 0 0 rgba(255,255,255,0.35);}
+  70%{box-shadow:0 0 0 20px rgba(255,255,255,0);}
+  100%{box-shadow:0 0 0 0 rgba(255,255,255,0);}
+}
+.tap-done-msg{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:30px; font-weight:900; color:var(--success); font-family:var(--font-display);
+}
 
 .taps-log{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:18px;}
 .tap-chip{display:flex; align-items:center; gap:6px; padding:7px 12px; border-radius:100px; background:rgba(61,220,151,0.14); border:1px solid rgba(61,220,151,0.35); color:var(--success); font-size:12.5px; font-weight:700;}
@@ -1383,6 +1401,18 @@ async function advanceToReveal(){
 
 /* مرحلة النقاش: لا يوجد تلميحات داخل التطبيق — اللاعبون يتحدثون عبر Discord أو صوتياً،
    والتطبيق يعرض فقط عداداً مشتركاً لوقت النقاش قبل الانتقال للتصويت. */
+/* يختار زوج عشوائي "فلان يسأل فلان" من اللاعبين المتصلين، ويتجنّب تكرار نفس الزوج مباشرة إن أمكن */
+function pickRandomAskPair(uids, excludePair){
+  if(uids.length < 2) return null;
+  let asker, askee, attempts = 0;
+  do{
+    asker = uids[Math.floor(Math.random()*uids.length)];
+    askee = uids[Math.floor(Math.random()*uids.length)];
+    attempts++;
+  } while(attempts<20 && (asker===askee || (excludePair && excludePair.asker===asker && excludePair.askee===askee)));
+  return {asker, askee};
+}
+
 async function advanceToDiscussion(){
   if(!state.isHost) return;
   const code = state.roomCode;
@@ -1390,7 +1420,9 @@ async function advanceToDiscussion(){
   const round = snap.val();
   if(!round || round.phase!=="reveal") return; // انتقلت أصلاً — يمنع إعادة ضبط الوقت لو تكرر النداء
   const seconds = (state.room.settings.discussionSeconds)||90;
-  await db.ref(`rooms/${code}/round`).update({phase:"discussion", phaseEndAt: Date.now()+seconds*1000});
+  const onlineUids = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false).map(([uid])=>uid);
+  const askPair = pickRandomAskPair(onlineUids, null);
+  await db.ref(`rooms/${code}/round`).update({phase:"discussion", phaseEndAt: Date.now()+seconds*1000, askPair});
   await db.ref(`rooms/${code}/meta/phase`).set("discussion");
   clearTimeout(advanceToDiscussion._t);
   advanceToDiscussion._t = setTimeout(async ()=>{
@@ -1991,6 +2023,18 @@ async function skipDiscussion(){
   advanceToVoting();
 }
 
+/* الهوست يطلب زوج جديد عشوائي "فلان يسأل فلان" أثناء النقاش */
+async function nextAskPair(){
+  if(!state.isHost) return;
+  const code = state.roomCode;
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="discussion") return;
+  const onlineUids = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false).map(([uid])=>uid);
+  const askPair = pickRandomAskPair(onlineUids, round.askPair);
+  await db.ref(`rooms/${code}/round/askPair`).set(askPair);
+}
+
 /* لاعب يصوّت */
 async function submitVote(targetUid){
   const code = state.roomCode;
@@ -2495,10 +2539,14 @@ function renderReveal(round){
 }
 
 function renderDiscussion(round){
-  const players = Object.entries(state.room.players).filter(([uid,p])=>p.online!==false)
+  const allPlayers = state.room.players;
+  const players = Object.entries(allPlayers).filter(([uid,p])=>p.online!==false)
     .sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
   const remaining = Math.max(0, round.phaseEndAt - Date.now());
   const total = (state.room.settings.discussionSeconds||90)*1000;
+  const pair = round.askPair;
+  const askerName = pair && allPlayers[pair.asker] ? allPlayers[pair.asker].name : '';
+  const askeeName = pair && allPlayers[pair.askee] ? allPlayers[pair.askee].name : '';
 
   if(remaining<=0 && state.isHost){ skipDiscussion(); }
 
@@ -2511,6 +2559,13 @@ function renderDiscussion(round){
       ${timerRingHTML()}
     </div>
 
+    ${pair ? `
+      <div class="ask-pair-banner">
+        <span class="ask-name">${escapeHTML(askerName)}</span>
+        <span class="ask-verb">يسأل</span>
+        <span class="ask-name">${escapeHTML(askeeName)}</span>
+      </div>` : ''}
+
     <div class="section-title" style="width:100%;">اللاعبون في الجولة</div>
     <div class="player-list" style="width:100%;">
       ${players.map(([uid,p])=>`
@@ -2520,13 +2575,17 @@ function renderDiscussion(round){
         </div>`).join('')}
     </div>
 
-    ${state.isHost ? `<button class="btn btn-secondary" id="skip-discussion" style="margin-top:18px;">${svgIcon('play')}إنهاء النقاش والانتقال للتصويت</button>` : ''}
+    ${state.isHost ? `
+      <button class="btn btn-secondary" id="next-ask-pair" style="margin-top:18px;">🔀 متابعة — زوج جديد</button>
+      <button class="btn btn-primary" id="skip-discussion" style="margin-top:10px;">${svgIcon('play')}إنهاء النقاش والانتقال للتصويت</button>
+    ` : ''}
   </div></div>`;
 
   startRingCountdown(total, remaining, ()=>{});
 
   if(state.isHost){
     document.getElementById('skip-discussion').onclick = skipDiscussion;
+    document.getElementById('next-ask-pair').onclick = nextAskPair;
   }
 }
 
@@ -2661,6 +2720,12 @@ function renderChairsTap(round){
   const taps = round.taps||{};
   const iTapped = !!taps[state.uid];
 
+  // موقعين عشوائيين لدائرتي الضغط — تنويع بصري بدل زر ثابت بالنص
+  const circles = iTapped ? [] : [0,1].map(()=>({
+    top: 14 + Math.random()*56,
+    left: 12 + Math.random()*66
+  }));
+
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="section-title" style="width:100%;">اللاعبون (${players.length})</div>
     <div class="player-list" style="width:100%;">
@@ -2673,11 +2738,17 @@ function renderChairsTap(round){
     </div>
 
     <h2 style="font-size:24px; margin-top:6px;">🪑 اجلس بسرعة!</h2>
-    <button class="tap-btn" id="tap-btn" ${iTapped?'disabled':''}>${iTapped?'تم! ✅':'اضغط الآن'}</button>
+    <div class="tap-arena">
+      ${iTapped
+        ? `<div class="tap-done-msg">تم! ✅</div>`
+        : circles.map((c,i)=>`<button class="tap-circle c${i}" style="top:${c.top}%; left:${c.left}%;">اضغط!</button>`).join('')}
+    </div>
   </div></div>`;
 
   if(!iTapped){
-    document.getElementById('tap-btn').onclick = submitChairsTap;
+    document.querySelectorAll('.tap-circle').forEach(btn=>{
+      btn.onclick = submitChairsTap;
+    });
   }
 }
 

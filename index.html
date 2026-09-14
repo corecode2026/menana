@@ -1299,17 +1299,15 @@ function enterRoom(code){
     const val = snap.val();
     if(!val){ toast("تم إغلاق الغرفة"); leaveRoom(); return; }
     state.room = val;
+    // نشتق تعييني الخاص من نفس اللقطة الذرية لقاعدة البيانات (مو من مستمع منفصل)
+    // كي لا يصير تعارض توقيت بين تحديث بيانات الجولة وتحديث تعييني الخاص — وهو ما كان يسبب
+    // ظهور صورة قديمة/باهتة أو حالة "الشخص المختلف" بالغلط لبعض اللاعبين عند بداية جولة جديدة
+    state.myAssignment = (val.round && val.round.assignments) ? (val.round.assignments[state.uid] || null) : null;
     handleHostMaintenance();
     route();
   };
   ref.on('value', cb);
   state.listeners.push([ref, cb]);
-
-  // تعيين الكلمة الخاصة بي لهذه الجولة (مسار خاص محمي بالقواعد)
-  const myRef = db.ref(`rooms/${code}/round/assignments/${state.uid}`);
-  const myCb = snap=>{ state.myAssignment = snap.val(); route(); };
-  myRef.on('value', myCb);
-  state.listeners.push([myRef, myCb]);
 }
 
 // إذا غاب الهوست (host) يتم نقل الاستضافة تلقائياً لأقدم لاعب متصل

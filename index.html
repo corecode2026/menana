@@ -660,9 +660,8 @@ input{font-family:var(--font-body);}
 @keyframes eqbounce{0%,100%{transform:scaleY(0.4);} 50%{transform:scaleY(1);}}
 .eq-bars.stopped .bar{animation:none; transform:scaleY(0.15);}
 
-.tap-arena{position:relative; width:100%; height:240px; margin-top:8px;}
 .tap-circle{
-  position:absolute; width:98px; height:98px; border-radius:50%; border:3px solid rgba(255,255,255,0.35);
+  position:fixed; z-index:70; width:98px; height:98px; border-radius:50%; border:3px solid rgba(255,255,255,0.35);
   transform:translate(-50%,-50%); color:#fff; font-family:var(--font-display); font-weight:900; font-size:16px;
   animation:tapPulse 1.15s ease-in-out infinite;
 }
@@ -674,9 +673,9 @@ input{font-family:var(--font-body);}
   70%{box-shadow:0 0 0 20px rgba(255,255,255,0);}
   100%{box-shadow:0 0 0 0 rgba(255,255,255,0);}
 }
-.tap-done-msg{
-  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  font-size:30px; font-weight:900; color:var(--success); font-family:var(--font-display);
+.tap-done-msg-inline{
+  width:100%; text-align:center; padding:24px 0;
+  font-size:26px; font-weight:900; color:var(--success); font-family:var(--font-display);
 }
 
 .taps-log{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:18px;}
@@ -2720,10 +2719,10 @@ function renderChairsTap(round){
   const taps = round.taps||{};
   const iTapped = !!taps[state.uid];
 
-  // موقعين عشوائيين لدائرتي الضغط — تنويع بصري بدل زر ثابت بالنص
+  // موقعين عشوائيين على كامل الشاشة (فوق وتحت ويمين وشمال) — مو محصورين بمكان واحد
   const circles = iTapped ? [] : [0,1].map(()=>({
-    top: 14 + Math.random()*56,
-    left: 12 + Math.random()*66
+    top: 8 + Math.random()*80,
+    left: 6 + Math.random()*82
   }));
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
@@ -2738,12 +2737,9 @@ function renderChairsTap(round){
     </div>
 
     <h2 style="font-size:24px; margin-top:6px;">🪑 اجلس بسرعة!</h2>
-    <div class="tap-arena">
-      ${iTapped
-        ? `<div class="tap-done-msg">تم! ✅</div>`
-        : circles.map((c,i)=>`<button class="tap-circle c${i}" style="top:${c.top}%; left:${c.left}%;">اضغط!</button>`).join('')}
-    </div>
-  </div></div>`;
+    ${iTapped ? `<div class="tap-done-msg-inline">تم! ✅</div>` : ''}
+  </div></div>
+  ${!iTapped ? circles.map((c,i)=>`<button class="tap-circle c${i}" style="top:${c.top}%; left:${c.left}%;">اضغط!</button>`).join('') : ''}`;
 
   if(!iTapped){
     document.querySelectorAll('.tap-circle').forEach(btn=>{

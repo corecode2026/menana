@@ -661,8 +661,9 @@ input{font-family:var(--font-body);}
 .eq-bars.stopped .bar{animation:none; transform:scaleY(0.15);}
 
 .tap-circle{
-  position:fixed; z-index:70; width:98px; height:98px; border-radius:50%; border:3px solid rgba(255,255,255,0.35);
-  transform:translate(-50%,-50%); color:#fff; font-family:var(--font-display); font-weight:900; font-size:16px;
+  position:fixed; z-index:70; width:clamp(56px, 16vw, 92px); height:clamp(56px, 16vw, 92px);
+  border-radius:50%; border:3px solid rgba(255,255,255,0.35);
+  transform:translate(-50%,-50%); color:#fff; font-family:var(--font-display); font-weight:900; font-size:clamp(12px, 3.4vw, 15px);
   animation:tapPulse 1.15s ease-in-out infinite;
 }
 .tap-circle.c0{background:radial-gradient(circle at 35% 30%, #ff9a5c, #d43a1f 65%); box-shadow:0 14px 34px rgba(212,58,31,0.45);}
@@ -1549,6 +1550,26 @@ async function advanceChairsToMusic(){
 }
 
 /* تُستدعى تلقائياً بعد انتهاء مدة الموسيقى — لا حاجة لضغطة يدوية من الهوست */
+/* يولّد مواقع عشوائية للكراسي بدون تداخل بينها، وبعيدة كفاية عن حواف الشاشة (مناسبة لشاشة الهاتف) */
+function generateChairsCirclePositions(count){
+  const positions = [];
+  const minDist = 24; // أقل مسافة مسموحة بين مركزي دائرتين (بالنسبة المئوية) لتفادي التلاصق
+  let guard = 0;
+  while(positions.length < count && guard < count*60){
+    guard++;
+    const candidate = { top: 16+Math.random()*66, left: 12+Math.random()*76 };
+    const tooClose = positions.some(p=>{
+      const dx = p.left-candidate.left, dy = (p.top-candidate.top)*1.5; // تعويض الشكل الطولي للشاشة
+      return Math.sqrt(dx*dx+dy*dy) < minDist;
+    });
+    if(!tooClose) positions.push(candidate);
+  }
+  while(positions.length < count){ // احتياط لو كثرت الكراسي عن ما تتسع له الشاشة بدون تداخل
+    positions.push({ top: 16+Math.random()*66, left: 12+Math.random()*76 });
+  }
+  return positions;
+}
+
 async function stopMusicAndStartTap(){
   if(!state.isHost) return;
   const code = state.roomCode;
@@ -1559,19 +1580,12 @@ async function stopMusicAndStartTap(){
   const activeCount = round.allPlayers.length;
   const eliminateCount = Math.min(settings.eliminatePerRound||1, activeCount-1);
   const circleCount = Math.max(1, activeCount - eliminateCount); // دوائر أقل من عدد اللاعبين — متل كراسي حقيقية
-  const circles = Array.from({length: circleCount}, (_,i)=>({
-    id:`c${i}`, top: 8+Math.random()*80, left: 6+Math.random()*82
-  }));
+  const positions = generateChairsCirclePositions(circleCount);
+  const circles = positions.map((pos,i)=>({ id:`c${i}`, ...pos }));
   playSound('reveal');
-  await db.ref(`rooms/${code}/round`).update({phase:"tap", circles, claims:{}, phaseEndAt: Date.now()+8000});
+  // ما في وقت محدد لهاي المرحلة — تضل مفتوحة لحد ما تمتلئ كل الكراسي، مهما طال الوقت
+  await db.ref(`rooms/${code}/round`).update({phase:"tap", circles, claims:{}, phaseEndAt: 0});
   await db.ref(`rooms/${code}/meta/phase`).set("tap");
-  clearTimeout(stopMusicAndStartTap._t2);
-  stopMusicAndStartTap._t2 = setTimeout(async ()=>{
-    const s2 = await db.ref(`rooms/${state.roomCode}/round`).get();
-    const r2 = s2.val();
-    if(!r2 || r2.phase!=="tap") return;
-    finalizeChairsRound(r2); // شبكة أمان فقط — الحالة الطبيعية تنتهي فور امتلاء كل الدوائر، بدون انتظار الوقت
-  }, 8150);
 }
 
 /* لاعب يحاول "يحجز" دائرة فارغة — أول واحد يوصلها تختفي عند الباقي فوراً */
@@ -1591,7 +1605,6 @@ async function claimChairsCircle(circleId){
     const snap = await db.ref(`rooms/${code}/round`).get();
     const r = snap.val();
     if(Object.keys(r.claims||{}).length >= r.circles.length){
-      clearTimeout(stopMusicAndStartTap._t2);
       finalizeChairsRound(r);
     }
   }

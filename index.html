@@ -387,6 +387,17 @@ input{font-family:var(--font-body);}
   padding:14px 20px; border-radius:14px; font-weight:800; font-size:18px; text-align:center; width:100%;
 }
 
+.trivia-final-scores{display:grid; grid-template-columns:1fr 1fr; gap:14px; width:100%;}
+.trivia-final-team{
+  display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px 12px; border-radius:16px;
+  background:rgba(255,255,255,0.04); border:1px solid var(--border); transition:transform .15s ease;
+}
+.trivia-final-team.winner{
+  border-color:rgba(212,160,41,0.55); background:linear-gradient(160deg, rgba(212,160,41,0.16), rgba(163,64,31,0.08));
+  box-shadow:0 10px 26px rgba(212,160,41,0.2); transform:translateY(-4px);
+}
+.trivia-final-score{font-family:var(--font-display); font-weight:900; font-size:34px; color:#fff;}
+
 .lifeline-row{display:flex; gap:8px; width:100%; flex-wrap:wrap; justify-content:center;}
 .lifeline-btn{
   padding:9px 14px; border-radius:100px; background:rgba(255,255,255,0.05); border:1px solid var(--border);
@@ -1918,7 +1929,8 @@ function awardTriviaCell(winnerTeam){
   t.currentCell = null; t.currentQuestion = null; t.revealed = false;
   playSound(winnerTeam?'win':'lose');
   if(winnerTeam) launchConfetti();
-  renderTriviaLocalBoard();
+  if(t.cells.every(c=>c.used)) renderTriviaLocalFinal();
+  else renderTriviaLocalBoard();
 }
 
 function adjustTriviaScore(team, delta){
@@ -3111,6 +3123,47 @@ function wireTriviaHud(){
   if(exitBtn) exitBtn.onclick = ()=>{ if(confirm('طلعت من سين جيم؟')) exitTriviaLocal(); };
 }
 
+/* شاشة النتيجة النهائية — تظهر تلقائياً لما تُستخدم كل خلايا اللوحة */
+function renderTriviaLocalFinal(){
+  const t = state.triviaLocal;
+  clearTriviaLocalStorage(); // خلصت اللعبة، ما في داعي نرجّعها لو تحدثت الصفحة
+  const winner = t.scores.A===t.scores.B ? null : (t.scores.A>t.scores.B ? 'A' : 'B');
+  playSound('win');
+  launchConfetti();
+
+  appRoot().innerHTML = `<div class="trivia-stage">
+    <div class="trivia-stage-glow"></div>
+    <div class="trivia-stage-inner" style="max-width:520px;">
+      <div class="trivia-logo">
+        <span class="trivia-logo-diamond">◆</span>
+        <h1>سين جيم</h1>
+        <span class="trivia-logo-diamond">◆</span>
+      </div>
+      <div class="trivia-qcard" style="align-items:center;">
+        <div class="trivia-qcard-eyebrow">🏆 انتهت اللعبة</div>
+        <div class="result-banner ${winner?'result-win':''}" style="width:100%;">
+          ${winner ? `${winner==="A"?`🔴 ${escapeHTML(t.teamNames.A)}`:`🔵 ${escapeHTML(t.teamNames.B)}`} فاز باللعبة! 🎉` : 'تعادل بين الفريقين! 🤝'}
+        </div>
+        <div class="trivia-final-scores">
+          <div class="trivia-final-team ${winner==='A'?'winner':''}">
+            <div class="trivia-hud-name">🔴 ${escapeHTML(t.teamNames.A)}</div>
+            <div class="trivia-final-score">${t.scores.A}</div>
+          </div>
+          <div class="trivia-final-team ${winner==='B'?'winner':''}">
+            <div class="trivia-hud-name">🔵 ${escapeHTML(t.teamNames.B)}</div>
+            <div class="trivia-final-score">${t.scores.B}</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="trivia-new-game" style="width:100%; margin-top:12px;">${svgIcon('play')}لعبة جديدة</button>
+        <button class="btn btn-ghost btn-sm" id="trivia-exit-final" style="width:100%; margin-top:8px;">الخروج للرئيسية</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('trivia-new-game').onclick = ()=>{ state.triviaLocal = null; renderTriviaSetup1(); };
+  document.getElementById('trivia-exit-final').onclick = ()=>{ state.triviaLocal = null; renderHome(); };
+}
+
 function renderTriviaLocalBoard(){
   const t = state.triviaLocal;
   t.currentCell = null; t.currentQuestion = null; t.revealed = false;
@@ -3248,36 +3301,11 @@ function renderTriviaLocalQuestion(){
 }
 
 function renderFinal(){
-  const isTrivia = (state.room.meta.gameType||"different")==="trivia";
   const players = Object.entries(state.room.players).sort((a,b)=>(b[1].score||0)-(a[1].score||0));
   launchConfetti();
   playSound('win');
 
-  let bodyHTML;
-  if(isTrivia){
-    const teamA = players.filter(([uid,p])=>p.team==="A");
-    const teamB = players.filter(([uid,p])=>p.team==="B");
-    const scoreA = teamA.reduce((s,[uid,p])=>s+(p.score||0),0);
-    const scoreB = teamB.reduce((s,[uid,p])=>s+(p.score||0),0);
-    const winner = scoreA===scoreB ? null : (scoreA>scoreB ? 'A' : 'B');
-    bodyHTML = `
-      <div class="result-banner ${winner?'result-win':''}" style="margin-bottom:18px;">
-        ${winner ? `${winner==="A"?'🔴 الفريق الأول':'🔵 الفريق الثاني'} فاز باللعبة! 🎉` : 'تعادل بين الفريقين! 🤝'}
-      </div>
-      <div class="row2" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-        <div class="wc-box ${winner==='A'?'odd':''}" style="text-align:center;">
-          <div class="tag">🔴 الفريق الأول</div>
-          <div class="wd" style="font-size:26px; margin:8px 0;">${scoreA}</div>
-          ${teamA.map(([uid,p])=>`<div style="font-size:12.5px; color:var(--text-dim); margin-top:4px;">${escapeHTML(p.name)}</div>`).join('')}
-        </div>
-        <div class="wc-box ${winner==='B'?'odd':''}" style="text-align:center;">
-          <div class="tag">🔵 الفريق الثاني</div>
-          <div class="wd" style="font-size:26px; margin:8px 0;">${scoreB}</div>
-          ${teamB.map(([uid,p])=>`<div style="font-size:12.5px; color:var(--text-dim); margin-top:4px;">${escapeHTML(p.name)}</div>`).join('')}
-        </div>
-      </div>`;
-  } else {
-    bodyHTML = `<div class="stack">
+  const bodyHTML = `<div class="stack">
       ${players.map(([uid,p],i)=>`
         <div class="lb-row">
           <div class="lb-rank ${i===0?'gold':''}">${i+1}</div>
@@ -3286,7 +3314,6 @@ function renderFinal(){
           <div class="lb-score">${p.score||0}</div>
         </div>`).join('')}
     </div>`;
-  }
 
   appRoot().innerHTML = `<div class="wrap"><div class="card card-wide">
     <div style="text-align:center; margin-bottom:20px;">

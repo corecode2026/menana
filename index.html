@@ -1386,14 +1386,17 @@ async function advanceToReveal(){
 async function advanceToDiscussion(){
   if(!state.isHost) return;
   const code = state.roomCode;
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="reveal") return; // انتقلت أصلاً — يمنع إعادة ضبط الوقت لو تكرر النداء
   const seconds = (state.room.settings.discussionSeconds)||90;
   await db.ref(`rooms/${code}/round`).update({phase:"discussion", phaseEndAt: Date.now()+seconds*1000});
   await db.ref(`rooms/${code}/meta/phase`).set("discussion");
   clearTimeout(advanceToDiscussion._t);
   advanceToDiscussion._t = setTimeout(async ()=>{
-    const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
-    const round = snap.val();
-    if(!round || round.phase!=="discussion") return;
+    const snap2 = await db.ref(`rooms/${state.roomCode}/round`).get();
+    const round2 = snap2.val();
+    if(!round2 || round2.phase!=="discussion") return;
     advanceToVoting();
   }, seconds*1000+150);
 }
@@ -2465,6 +2468,11 @@ function renderReveal(round){
   const total = (state.room.settings.viewSeconds||7)*1000;
   const isUnknown = mine && mine.unknown;
 
+  // شبكة أمان: لو تأخر جهاز المضيف (مثلاً قفلت شاشته أثناء هالمرحلة، والمتصفح يجمّد المؤقتات
+  // بالخلفية) ولم تنتقل الجولة تلقائياً رغم انتهاء الوقت، أي عميل يلاحظ ذلك بيطلب من
+  // المضيف إتمام الانتقال فوراً بدل ما تعلق الجولة على صورة واحدة للأبد
+  if(remaining<=0 && state.isHost){ advanceToDiscussion(); }
+
   const innerHTML = isUnknown
     ? `<div class="emoji">${mine?mine.emoji:'❔'}</div>
        <div class="word" style="font-size:19px; line-height:1.5;">أنت لا تعرف شو معك!<br>راقب الباقي وتصرّف بثقة</div>`
@@ -2483,10 +2491,7 @@ function renderReveal(round){
     </div>
   </div>`;
 
-  startRingCountdown(total, remaining, ()=>{
-    const wcard = document.getElementById('wcard');
-    if(wcard) wcard.classList.add('hidden-word');
-  });
+  startRingCountdown(total, remaining, ()=>{});
 }
 
 function renderDiscussion(round){
@@ -2494,6 +2499,8 @@ function renderDiscussion(round){
     .sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
   const remaining = Math.max(0, round.phaseEndAt - Date.now());
   const total = (state.room.settings.discussionSeconds||90)*1000;
+
+  if(remaining<=0 && state.isHost){ skipDiscussion(); }
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="turn-banner">

@@ -334,19 +334,20 @@ input{font-family:var(--font-body);}
 .trivia-turn-btn:hover{transform:scale(1.05);}
 
 /* اللوحة */
-.trivia-board{display:flex; flex-direction:column; gap:9px; width:100%; overflow-x:auto; padding:4px 2px;}
-.trivia-board-row{display:grid; grid-template-columns:120px repeat(6, minmax(48px,1fr)); gap:8px; align-items:stretch;}
-.trivia-cat-head{
-  display:flex; align-items:flex-end; justify-content:center; min-height:64px; padding:10px 8px;
-  text-align:center; font-family:var(--font-display); font-weight:800; font-size:14px; line-height:1.25;
-  color:#ffe6a3; background:linear-gradient(160deg, rgba(212,160,41,0.28), rgba(163,64,31,0.18));
+.trivia-board{display:flex; flex-direction:column; gap:16px; width:100%;}
+.trivia-cat-section{display:flex; flex-direction:column; gap:8px;}
+.trivia-cat-banner{
+  display:flex; align-items:center; justify-content:center; min-height:64px; padding:14px 18px;
+  text-align:center; font-family:var(--font-display); font-weight:900; font-size:19px; letter-spacing:0.3px;
+  color:#ffe6a3; background:linear-gradient(100deg, rgba(212,160,41,0.32), rgba(163,64,31,0.22));
   background-size:cover; background-position:center;
-  border:1px solid rgba(212,160,41,0.35); border-radius:12px; box-shadow:0 8px 18px rgba(0,0,0,0.25);
-  overflow:hidden;
+  border:1px solid rgba(212,160,41,0.4); border-radius:14px; box-shadow:0 10px 24px rgba(0,0,0,0.3);
+  overflow:hidden; width:100%;
 }
-.trivia-cat-head span{white-space:normal; word-break:break-word;}
+.trivia-cat-banner span{white-space:normal; word-break:break-word;}
+.trivia-cat-cells{display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; width:100%;}
 .trivia-cell{
-  aspect-ratio:1.25; border-radius:12px; color:#fff; font-family:var(--font-display); font-weight:800; font-size:16px;
+  aspect-ratio:1.25; border-radius:12px; color:#fff; font-family:var(--font-display); font-weight:800; font-size:17px;
   border:1px solid rgba(255,255,255,0.14); transition:transform .12s ease, filter .12s ease, box-shadow .12s ease;
   position:relative; overflow:hidden;
 }
@@ -396,8 +397,8 @@ input{font-family:var(--font-body);}
 
 @media (max-width:640px){
   .trivia-logo h1{font-size:26px;}
-  .trivia-board-row{grid-template-columns:78px repeat(6, minmax(38px,1fr)); gap:5px;}
-  .trivia-cat-head{font-size:11px; min-height:52px; padding:8px 4px;}
+  .trivia-cat-banner{font-size:15px; min-height:48px; padding:10px 12px;}
+  .trivia-cat-cells{gap:5px;}
   .trivia-cell{font-size:13px;}
   .trivia-hud-name{display:none;}
 }
@@ -1837,8 +1838,8 @@ function newTriviaLocalState(){
     lifelinesEnabled:{A:{friend:true,swap:true,extra:true}, B:{friend:true,swap:true,extra:true}},
     lifelinesUsed:{A:{friend:false,swap:false,extra:false}, B:{friend:false,swap:false,extra:false}},
     categories:[], cells:[], scores:{A:0,B:0}, turn:"A",
-    currentCell:null, currentQuestion:null, revealed:false,
-    answerSeconds:20
+    currentCell:null, currentQuestion:null, revealed:false, extraTimeThisCell:false,
+    screen:"setup"
   };
 }
 
@@ -1870,9 +1871,10 @@ function openTriviaCell(cellKey){
   if(!cell || cell.used) return;
   const q = TRIVIA_QUESTIONS.find(qq=>qq.id===cell.questionId);
   t.currentCell = cell;
-  t.currentQuestion = q || {question:"سؤال غير متوفر", options:["-","-","-","-"], correctIndex:0};
+  t.currentQuestion = q || {question:"سؤال غير متوفر", answer:"", mediaType:"none", mediaUrl:""};
   t.revealed = false;
-  renderTriviaLocalQuestion();
+  t.extraTimeThisCell = false;
+  renderTriviaPreQuestion();
 }
 
 function useTriviaLifeline(type){
@@ -1884,15 +1886,14 @@ function useTriviaLifeline(type){
   t.lifelinesUsed[team][type] = true;
 
   if(type==="extra"){
-    clearTimer();
-    startRingCountdown(20000, 20000, ()=>{});
+    t.extraTimeThisCell = true;
   } else if(type==="swap"){
     const sameCatQs = TRIVIA_QUESTIONS.filter(q=>(q.category||"عام")===cell.category && (q.points||100)===cell.points && q.id!==cell.questionId);
     const newQ = sameCatQs.length ? sameCatQs[Math.floor(Math.random()*sameCatQs.length)] : null;
     if(newQ){ t.currentQuestion = newQ; cell.questionId = newQ.id; }
   }
   // "friend" (اتصال بصديق) ما بيحتاج أي تأثير برمجي — بس يُسجَّل كمستخدم، ويتفقوا مع صديقهم بره التطبيق
-  renderTriviaLocalQuestion();
+  renderTriviaPreQuestion();
 }
 
 function revealTriviaAnswer(){
@@ -1917,6 +1918,7 @@ function adjustTriviaScore(team, delta){
   state.triviaLocal.scores[team] = Math.max(0, state.triviaLocal.scores[team]+delta);
   const el = document.getElementById(`trivia-score-${team}`);
   if(el) el.textContent = state.triviaLocal.scores[team];
+  saveTriviaLocal();
 }
 
 function toggleTriviaTurn(){
@@ -1926,11 +1928,29 @@ function toggleTriviaTurn(){
     el.textContent = turn==="A" ? `🔴 ${state.triviaLocal.teamNames.A}` : `🔵 ${state.triviaLocal.teamNames.B}`;
     el.classList.remove('A','B'); el.classList.add(turn);
   }
+  saveTriviaLocal();
+}
+
+const TRIVIA_STORAGE_KEY = "sinJeemSession_v1";
+
+/* يحفظ جلسة سين جيم بالمتصفح (localStorage) — عشان لو انعمل تحديث للصفحة بالغلط، ترجع نفس الحالة بدل ما تطلع للرئيسية */
+function saveTriviaLocal(){
+  try{ localStorage.setItem(TRIVIA_STORAGE_KEY, JSON.stringify(state.triviaLocal)); }catch(e){}
+}
+function loadTriviaLocalFromStorage(){
+  try{
+    const raw = localStorage.getItem(TRIVIA_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearTriviaLocalStorage(){
+  try{ localStorage.removeItem(TRIVIA_STORAGE_KEY); }catch(e){}
 }
 
 function exitTriviaLocal(){
   state.triviaLocal = null;
   clearTimer();
+  clearTriviaLocalStorage();
   renderHome();
 }
 
@@ -3086,6 +3106,9 @@ function wireTriviaHud(){
 
 function renderTriviaLocalBoard(){
   const t = state.triviaLocal;
+  t.currentCell = null; t.currentQuestion = null; t.revealed = false;
+  t.screen = "board";
+  saveTriviaLocal();
   appRoot().innerHTML = `<div class="trivia-stage">
     <div class="trivia-stage-glow"></div>
     <div class="trivia-stage-inner">
@@ -3099,12 +3122,14 @@ function renderTriviaLocalBoard(){
 
       <div class="trivia-board" style="margin-top:16px;">
         ${t.categories.map(cat=>`
-          <div class="trivia-board-row">
-            <div class="trivia-cat-head" ${TRIVIA_CATEGORY_IMAGES[cat] ? `style="background-image:linear-gradient(180deg, rgba(10,7,16,0.15), rgba(10,7,16,0.85)), url('${escapeHTML(TRIVIA_CATEGORY_IMAGES[cat])}');"` : ''}><span>${escapeHTML(cat)}</span></div>
-            ${["A","B"].map(team=>[100,300,600].map(pts=>{
-              const cell = t.cells.find(c=>c.category===cat && c.team===team && c.points===pts);
-              return `<button class="trivia-cell team-${team} ${cell.used?'used':''}" data-key="${cell.key}" ${cell.used?'disabled':''}>${cell.used?'<span class=\"tc-check\">✔</span>':`<span class="tc-pts">${pts}</span>`}</button>`;
-            }).join('')).join('')}
+          <div class="trivia-cat-section">
+            <div class="trivia-cat-banner" ${TRIVIA_CATEGORY_IMAGES[cat] ? `style="background-image:linear-gradient(90deg, rgba(10,7,16,0.35), rgba(10,7,16,0.75)), url('${escapeHTML(TRIVIA_CATEGORY_IMAGES[cat])}');"` : ''}><span>${escapeHTML(cat)}</span></div>
+            <div class="trivia-cat-cells">
+              ${["A","B"].map(team=>[100,300,600].map(pts=>{
+                const cell = t.cells.find(c=>c.category===cat && c.team===team && c.points===pts);
+                return `<button class="trivia-cell team-${team} ${cell.used?'used':''}" data-key="${cell.key}" ${cell.used?'disabled':''}>${cell.used?'<span class=\"tc-check\">✔</span>':`<span class="tc-pts">${pts}</span>`}</button>`;
+              }).join('')).join('')}
+            </div>
           </div>`).join('')}
       </div>
 
@@ -3121,12 +3146,54 @@ function renderTriviaLocalBoard(){
   });
 }
 
+/* شاشة وسائل المساعدة — تظهر بعد فتح الخلية وقبل عرض السؤال، عشان تُستخدم الوسائل قبل السؤال فقط */
+function renderTriviaPreQuestion(){
+  const t = state.triviaLocal;
+  const cell = t.currentCell;
+  const teamLabel = cell.team==="A" ? `🔴 ${t.teamNames.A}` : `🔵 ${t.teamNames.B}`;
+  const myLifelines = t.lifelinesEnabled[cell.team];
+  const usedLifelines = t.lifelinesUsed[cell.team];
+  t.screen = "prequestion";
+  saveTriviaLocal();
+
+  appRoot().innerHTML = `<div class="trivia-stage">
+    <div class="trivia-stage-glow"></div>
+    <div class="trivia-stage-inner" style="max-width:520px;">
+      <div class="trivia-logo trivia-logo-sm">
+        <span class="trivia-logo-diamond">◆</span>
+        <h1>سين جيم</h1>
+        <span class="trivia-logo-diamond">◆</span>
+      </div>
+      ${triviaHudHTML()}
+      <div class="trivia-qcard">
+        <div class="trivia-qcard-eyebrow">${teamLabel} — ${escapeHTML(cell.category)} — ${cell.points} نقطة</div>
+        <p style="text-align:center; color:var(--text-dim); font-size:13.5px;">بدكم تستخدموا وسيلة مساعدة قبل ما يبين السؤال؟</p>
+        <div class="lifeline-row">
+          ${TRIVIA_LIFELINE_DEFS.filter(ll=>myLifelines[ll.key]).map(ll=>`<button class="lifeline-btn" data-ll="${ll.key}" ${usedLifelines[ll.key]?'disabled':''}>${ll.label}</button>`).join('')}
+        </div>
+        ${t.extraTimeThisCell ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}تم منح وقت إضافي لهاد السؤال ⏱️</div>` : ''}
+        <button class="btn btn-primary" id="show-question" style="width:100%; margin-top:6px;">🎬 عرض السؤال</button>
+        <button class="btn btn-ghost btn-sm" id="back-to-board" style="width:100%; margin-top:4px;">↩ رجوع للوحة</button>
+      </div>
+    </div>
+  </div>`;
+  wireTriviaHud();
+  document.querySelectorAll('.lifeline-btn:not(:disabled)').forEach(btn=>{
+    btn.onclick = ()=> useTriviaLifeline(btn.dataset.ll);
+  });
+  document.getElementById('show-question').onclick = renderTriviaLocalQuestion;
+  document.getElementById('back-to-board').onclick = ()=>{
+    t.currentCell = null; t.currentQuestion = null; t.revealed = false;
+    renderTriviaLocalBoard();
+  };
+}
+
 function renderTriviaLocalQuestion(){
   const t = state.triviaLocal;
   const cell = t.currentCell, q = t.currentQuestion;
   const teamLabel = cell.team==="A" ? `🔴 ${t.teamNames.A}` : `🔵 ${t.teamNames.B}`;
-  const myLifelines = t.lifelinesEnabled[cell.team];
-  const usedLifelines = t.lifelinesUsed[cell.team];
+  t.screen = "question";
+  saveTriviaLocal();
 
   appRoot().innerHTML = `<div class="trivia-stage">
     <div class="trivia-stage-glow"></div>
@@ -3145,10 +3212,6 @@ function renderTriviaLocalQuestion(){
         ${q.mediaType==="video" && q.mediaUrl ? `<video src="${escapeHTML(q.mediaUrl)}" controls style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;"></video>` : ''}
         ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
 
-        <div class="lifeline-row">
-          ${TRIVIA_LIFELINE_DEFS.filter(ll=>myLifelines[ll.key]).map(ll=>`<button class="lifeline-btn" data-ll="${ll.key}" ${usedLifelines[ll.key]?'disabled':''}>${ll.label}</button>`).join('')}
-        </div>
-
         ${!t.revealed
           ? `<button class="btn btn-primary" id="reveal-answer" style="width:100%; margin-top:10px;">🙈 إظهار الإجابة</button>`
           : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}مين جاوب صح؟</div>
@@ -3162,12 +3225,10 @@ function renderTriviaLocalQuestion(){
     </div>
   </div>`;
 
-  startRingCountdown(20000, 20000, ()=>{}); // عداد تذكيري بصري فقط (20 ثانية)، ما بيغيّر أي شي لما يخلص
+  const ringMs = t.extraTimeThisCell ? 30000 : 20000; // عداد تذكيري بصري فقط، ما بيغيّر أي شي لما يخلص
+  startRingCountdown(ringMs, ringMs, ()=>{});
   wireTriviaHud();
 
-  document.querySelectorAll('.lifeline-btn:not(:disabled)').forEach(btn=>{
-    btn.onclick = ()=> useTriviaLifeline(btn.dataset.ll);
-  });
   const revealBtn = document.getElementById('reveal-answer');
   if(revealBtn) revealBtn.onclick = revealTriviaAnswer;
   const awardA = document.getElementById('award-A'); if(awardA) awardA.onclick = ()=> awardTriviaCell('A');
@@ -3518,8 +3579,19 @@ function launchConfetti(){
 (async function init(){
   await ensureAuth();
   await loadGameData();
+
   const params = new URLSearchParams(location.search);
   const roomFromLink = params.get('room');
+
+  const savedTrivia = !roomFromLink ? loadTriviaLocalFromStorage() : null;
+  if(savedTrivia && savedTrivia.cells && savedTrivia.cells.length){
+    state.triviaLocal = savedTrivia;
+    if(savedTrivia.screen==="question" && savedTrivia.currentCell) renderTriviaLocalQuestion();
+    else if(savedTrivia.screen==="prequestion" && savedTrivia.currentCell) renderTriviaPreQuestion();
+    else renderTriviaLocalBoard();
+    return;
+  }
+
   if(roomFromLink){
     renderJoin();
     setTimeout(()=>{ const c=document.getElementById('code'); if(c) c.value=roomFromLink; }, 50);

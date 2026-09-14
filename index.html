@@ -3228,20 +3228,40 @@ function renderDrawPhase(round){
     };
 
     let drawing=false, lastX=0, lastY=0;
+    let lastBroadcastX=0, lastBroadcastY=0, lastBroadcastTime=0;
     function pos(e){
       const rect = canvas.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       return {x:(clientX-rect.left)/rect.width, y:(clientY-rect.top)/rect.height};
     }
-    canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); drawing=true; const p=pos(e); lastX=p.x; lastY=p.y; });
+    canvas.addEventListener('pointerdown', e=>{
+      e.preventDefault(); drawing=true;
+      const p=pos(e); lastX=p.x; lastY=p.y;
+      lastBroadcastX=p.x; lastBroadcastY=p.y; lastBroadcastTime=Date.now();
+    });
     canvas.addEventListener('pointermove', e=>{
       if(!drawing) return; e.preventDefault();
       const p = pos(e);
-      db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastX,y0:lastY,x1:p.x,y1:p.y,c:color,s:size});
+      // رسم محلي فوري وسلس عند الرسّام نفسه — ما بينتظر رحلة الذهاب والإياب لقاعدة البيانات
+      paintSegment({x0:lastX, y0:lastY, x1:p.x, y1:p.y, c:color, s:size});
       lastX = p.x; lastY = p.y;
+
+      // بث محدود المعدّل لباقي اللاعبين (كل ~40 ملي ثانية بدل كل حركة إصبع/فأرة) —
+      // كانت اللعبة ترسل عشرات التحديثات بالثانية بدون أي حد، وهذا كان يُغرق كل الأجهزة المتصلة ويُعلّقها
+      const now = Date.now();
+      if(now - lastBroadcastTime >= 40){
+        db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:p.x,y1:p.y,c:color,s:size});
+        lastBroadcastX = p.x; lastBroadcastY = p.y; lastBroadcastTime = now;
+      }
     });
-    window.addEventListener('pointerup', ()=>{ drawing=false; });
+    window.addEventListener('pointerup', ()=>{
+      if(drawing && (lastBroadcastX!==lastX || lastBroadcastY!==lastY)){
+        // نبعت آخر جزء من الخط ما انبعت لسا، كي ما تضل فجوة صغيرة بآخر الخط عند باقي اللاعبين
+        db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:lastX,y1:lastY,c:color,s:size});
+      }
+      drawing=false;
+    });
   } else if(!iAmCorrect){
     const guessInput = document.getElementById('guess-input');
     if(guessInput) guessInput.addEventListener('input', ()=> submitLiveGuess(guessInput.value));

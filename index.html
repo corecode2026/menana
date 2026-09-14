@@ -278,7 +278,7 @@ input{font-family:var(--font-body);}
 .policy-content h3{font-family:var(--font-display); font-size:16px; margin:18px 0 8px; color:var(--text);}
 .policy-content p{margin-bottom:6px;}
 
-/* ---- لعبة "سين جيم" — مسرح البرنامج ---- */
+/* ---- لعبة "سين ميم" — مسرح البرنامج ---- */
 .trivia-stage{
   position:relative; min-height:100vh; width:100%; overflow:hidden;
   background:
@@ -856,7 +856,7 @@ const GAMES = [
     grad:"linear-gradient(160deg, #3aa17e 0%, #1f6f8b 100%)"
   },
   {
-    id:"trivia", name:"سين جيم", tagline:"إعداد سريع وشغّلها بنفسك — شارك شاشتك عالديسكورد والعبوا بالصوت، بدون ما حد ينضم للموقع",
+    id:"trivia", name:"سين ميم", tagline:"إعداد سريع وشغّلها بنفسك — شارك شاشتك عالديسكورد والعبوا بالصوت، بدون ما حد ينضم للموقع",
     minPlayers:2, localOnly:true,
     iconSvg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2.1-2.5 4"/><circle cx="12" cy="17" r="0.6" fill="#fff" stroke="none"/></svg>',
     grad:"linear-gradient(160deg, #d4a029 0%, #a3401f 100%)"
@@ -888,7 +888,7 @@ let WORD_BANK = {};
 let ALL_CATEGORIES = [];
 let GUESS_IMAGES = [];       // صور لعبة "شو معي؟" المضافة يدوياً برابط من لوحة التحكم (احتياطي)
 let CHAIRS_SONGS = [];       // أغاني لعبة الكراسي الموسيقية المضافة برابط من لوحة التحكم
-let TRIVIA_QUESTIONS = [];   // بنك أسئلة لعبة "سين جيم" المضافة من لوحة التحكم
+let TRIVIA_QUESTIONS = [];   // بنك أسئلة لعبة "سين ميم" المضافة من لوحة التحكم
 let TRIVIA_CATEGORY_IMAGES = {}; // صور الفئات (اسم الفئة → رابط الصورة) لنفس اللعبة
 
 /* مدى مدة تشغيل الموسيقى بالثواني (min,max) — تُختار مدة عشوائية ضمن المدى بكل جولة للحفاظ على عنصر المفاجأة */
@@ -1243,7 +1243,7 @@ function route_afterAuthChange(){
 function defaultSettingsFor(gameId, maxPlayers){
   let base;
   if(gameId==="chairs"){
-    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, tapWindowMs:1500, musicRange:"medium", totalRounds:3, soundOn:true};
+    base = {minPlayers:3, maxPlayers: maxPlayers||8, eliminatePerRound:1, musicRange:"medium", totalRounds:3, soundOn:true};
   } else if(gameId==="guesswho"){
     base = {minPlayers:2, maxPlayers:2, category:"عشوائي", roundSeconds:180, totalRounds:3, soundOn:true};
   } else if(gameId==="draw"){
@@ -1524,7 +1524,7 @@ async function startChairsMatch(){
   await db.ref(`rooms/${code}/round`).set({
     type:"chairs", index:1,
     allPlayers, roundWinner:null, slowestThisRound:[],
-    taps:{}, phase:"countdown", phaseEndAt: Date.now()+3200
+    circles:[], claims:{}, phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
   setTimeout(()=>advanceChairsToMusic(), 3200);
@@ -1538,7 +1538,7 @@ async function advanceChairsToMusic(){
   const song = CHAIRS_SONGS.length ? CHAIRS_SONGS[Math.floor(Math.random()*CHAIRS_SONGS.length)] : null;
 
   await db.ref(`rooms/${code}/round`).update({
-    phase:"music", taps:{},
+    phase:"music", circles:[], claims:{},
     songUrl: song?song.url:null, songName: song?(song.name||''):'',
     phaseEndAt: Date.now()+durationSec*1000
   });
@@ -1555,51 +1555,59 @@ async function stopMusicAndStartTap(){
   const snap = await db.ref(`rooms/${code}/round`).get();
   const round = snap.val();
   if(!round || round.phase!=="music") return; // انتقلت المرحلة أصلاً
-  const seconds = (state.room.settings.tapWindowMs||1500)/1000;
+  const settings = state.room.settings;
+  const activeCount = round.allPlayers.length;
+  const eliminateCount = Math.min(settings.eliminatePerRound||1, activeCount-1);
+  const circleCount = Math.max(1, activeCount - eliminateCount); // دوائر أقل من عدد اللاعبين — متل كراسي حقيقية
+  const circles = Array.from({length: circleCount}, (_,i)=>({
+    id:`c${i}`, top: 8+Math.random()*80, left: 6+Math.random()*82
+  }));
   playSound('reveal');
-  await db.ref(`rooms/${code}/round`).update({phase:"tap", taps:{}, phaseEndAt: Date.now()+seconds*1000});
+  await db.ref(`rooms/${code}/round`).update({phase:"tap", circles, claims:{}, phaseEndAt: Date.now()+8000});
   await db.ref(`rooms/${code}/meta/phase`).set("tap");
   clearTimeout(stopMusicAndStartTap._t2);
   stopMusicAndStartTap._t2 = setTimeout(async ()=>{
     const s2 = await db.ref(`rooms/${state.roomCode}/round`).get();
     const r2 = s2.val();
     if(!r2 || r2.phase!=="tap") return;
-    finalizeChairsRound(r2);
-  }, seconds*1000+150);
+    finalizeChairsRound(r2); // شبكة أمان فقط — الحالة الطبيعية تنتهي فور امتلاء كل الدوائر، بدون انتظار الوقت
+  }, 8150);
 }
 
-/* لاعب يضغط زر "اجلس الآن" */
-async function submitChairsTap(){
+/* لاعب يحاول "يحجز" دائرة فارغة — أول واحد يوصلها تختفي عند الباقي فوراً */
+async function claimChairsCircle(circleId){
   const round = state.room.round;
   const code = state.roomCode;
   if(!round || round.phase!=="tap") return;
   if(!round.allPlayers.includes(state.uid)) return;
-  if(round.taps && round.taps[state.uid]) return;
-  await db.ref(`rooms/${code}/round/taps/${state.uid}`).set(firebase.database.ServerValue.TIMESTAMP);
+  const alreadyMine = Object.values(round.claims||{}).some(c=>c.uid===state.uid);
+  if(alreadyMine) return; // عندي دائرة أصلاً
+  if(round.claims && round.claims[circleId]) return; // انحجزت قبلي
+  try{
+    await db.ref(`rooms/${code}/round/claims/${circleId}`).set({uid:state.uid, ts:firebase.database.ServerValue.TIMESTAMP});
+  }catch(e){ return; }
   playSound('tick');
   if(state.isHost){
     const snap = await db.ref(`rooms/${code}/round`).get();
     const r = snap.val();
-    if(Object.keys(r.taps||{}).length >= r.allPlayers.length){
+    if(Object.keys(r.claims||{}).length >= r.circles.length){
       clearTimeout(stopMusicAndStartTap._t2);
       finalizeChairsRound(r);
     }
   }
 }
 
-/* الأسرع بالضغط كل جولة يفوز بنقطة؛ الأبطأ (حسب الإعداد) يظهر فقط كطرافة بدون إقصاء فعلي — الجميع يلعبون كل الجولات */
+/* الفائز الأسرع (أول واحد حجز دائرة) ياخد نقطة؛ من ما لحق ياخد دائرة أساساً هو "الأبطأ" هالجولة */
 async function finalizeChairsRound(round){
   if(!state.isHost) return;
   const code = state.roomCode;
-  const settings = state.room.settings;
-  const taps = round.taps||{};
+  const claimEntries = Object.values(round.claims||{});
+  const claimedUids = new Set(claimEntries.map(c=>c.uid));
   const all = round.allPlayers;
-  const ranked = all.map(uid=>({uid, t: (taps[uid]!==undefined && taps[uid]!==null) ? taps[uid] : Infinity}))
-    .sort((a,b)=>a.t-b.t); // الأسرع أولاً
+  const slowestThisRound = all.filter(uid=>!claimedUids.has(uid));
 
-  const roundWinner = ranked[0] && ranked[0].t!==Infinity ? ranked[0].uid : null;
-  const slowCount = Math.min(settings.eliminatePerRound||1, all.length-1);
-  const slowestThisRound = slowCount>0 ? ranked.slice(all.length-slowCount).map(x=>x.uid) : [];
+  const rankedWinners = claimEntries.slice().sort((a,b)=>(a.ts||0)-(b.ts||0));
+  const roundWinner = rankedWinners.length ? rankedWinners[0].uid : null;
 
   const players = state.room.players;
   if(roundWinner){
@@ -1616,7 +1624,7 @@ async function nextChairsRound(){
   const round = state.room.round;
   await db.ref(`rooms/${code}/round`).update({
     index:(round.index||1)+1, phase:"countdown", phaseEndAt: Date.now()+3200,
-    taps:{}, roundWinner:null, slowestThisRound:[]
+    circles:[], claims:{}, roundWinner:null, slowestThisRound:[]
   });
   await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:(round.index||1)+1});
   setTimeout(()=>advanceChairsToMusic(), 3200);
@@ -1879,7 +1887,7 @@ function detachDrawListeners(){
 }
 
 /* =========================================================================
-   لعبة "سين جيم" — أداة عرض محلية للمضيف وحده (بدون غرفة أو لاعبين ينضمّون).
+   لعبة "سين ميم" — أداة عرض محلية للمضيف وحده (بدون غرفة أو لاعبين ينضمّون).
    المضيف يشارك شاشته بمكالمة Discord ويلعب الكل بصوتهم؛ التطبيق هون بس
    يدير اللوحة والنقاط والوقت التذكيري، وكل القرارات (صح/غلط) يدوية من المضيف.
    ========================================================================= */
@@ -1991,7 +1999,7 @@ function toggleTriviaTurn(){
 
 const TRIVIA_STORAGE_KEY = "sinJeemSession_v1";
 
-/* يحفظ جلسة سين جيم بالمتصفح (localStorage) — عشان لو انعمل تحديث للصفحة بالغلط، ترجع نفس الحالة بدل ما تطلع للرئيسية */
+/* يحفظ جلسة سين ميم بالمتصفح (localStorage) — عشان لو انعمل تحديث للصفحة بالغلط، ترجع نفس الحالة بدل ما تطلع للرئيسية */
 function saveTriviaLocal(){
   try{ localStorage.setItem(TRIVIA_STORAGE_KEY, JSON.stringify(state.triviaLocal)); }catch(e){}
 }
@@ -2235,7 +2243,7 @@ function renderWaitingRoom(){
           </div>
         </div>
         <div class="field">
-          <label>عدد "الأبطأ" الظاهرين كل جولة (للطرافة فقط)</label>
+          <label>عدد "الكراسي الناقصة" كل جولة (عدد من بيخسر)</label>
           <div class="segmented" id="set-eliminate">
             ${[1,2].map(n=>`<button data-v="${n}" class="${settings.eliminatePerRound===n?'active':''}">${n}</button>`).join('')}
           </div>
@@ -2246,7 +2254,7 @@ function renderWaitingRoom(){
             ${[["short","قصيرة"],["medium","متوسطة"],["long","طويلة"],["random","عشوائية تماماً"]].map(([v,label])=>`<button data-v="${v}" class="${(settings.musicRange||'medium')===v?'active':''}">${label}</button>`).join('')}
           </div>
         </div>
-        <div class="hint-row">${svgIcon('info')}الأسرع بالضغط كل جولة ياخد نقطة — الجميع يلعبون كل الجولات، ما في إقصاء فعلي</div>
+        <div class="hint-row">${svgIcon('info')}كل جولة بيكون في كراسي (دوائر) أقل من عدد اللاعبين بعدد يلي حددته فوق — أول واحد ياخد كرسي يفوز بنقطة، ومن ما يلحق ياخد كرسي يظهر كـ"الأبطأ" بس بيضل يلعب الجولة الجاية</div>
         <div class="hint-row">${svgIcon('info')}${CHAIRS_SONGS.length ? `${CHAIRS_SONGS.length} أغنية بالبنك — بتُختار عشوائياً كل جولة` : 'ما في أغاني مضافة بعد — رح تشتغل اللعبة بدون صوت. أضف أغاني من لوحة التحكم'}</div>` : gameType==="guesswho" ? `
         <div class="field">
           <label>تصنيف الصور</label>
@@ -2716,14 +2724,10 @@ function stopLocalChairsAudio(){
 
 function renderChairsTap(round){
   const players = round.allPlayers.map(uid=>[uid, state.room.players[uid]]).filter(([uid,p])=>p);
-  const taps = round.taps||{};
-  const iTapped = !!taps[state.uid];
-
-  // موقعين عشوائيين على كامل الشاشة (فوق وتحت ويمين وشمال) — مو محصورين بمكان واحد
-  const circles = iTapped ? [] : [0,1].map(()=>({
-    top: 8 + Math.random()*80,
-    left: 6 + Math.random()*82
-  }));
+  const circles = round.circles||[];
+  const claims = round.claims||{};
+  const claimedUids = new Set(Object.values(claims).map(c=>c.uid));
+  const iGotOne = claimedUids.has(state.uid);
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
     <div class="section-title" style="width:100%;">اللاعبون (${players.length})</div>
@@ -2732,18 +2736,19 @@ function renderChairsTap(round){
         <div class="player-card">
           <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
           <div class="name" style="flex:1;">${escapeHTML(p.name)}</div>
-          ${taps[uid] ? svgIcon('check') : ''}
+          ${claimedUids.has(uid) ? svgIcon('check') : ''}
         </div>`).join('')}
     </div>
 
-    <h2 style="font-size:24px; margin-top:6px;">🪑 اجلس بسرعة!</h2>
-    ${iTapped ? `<div class="tap-done-msg-inline">تم! ✅</div>` : ''}
+    <h2 style="font-size:24px; margin-top:6px;">🪑 اقفز على كرسي بسرعة!</h2>
+    <div class="hint-row" style="justify-content:center;">${svgIcon('info')}${circles.length} كرسي بس لـ${round.allPlayers.length} لاعبين — كل ما حدا ياخد كرسي، بيختفي عند الباقي</div>
+    ${iGotOne ? `<div class="tap-done-msg-inline">قعدت! ✅</div>` : ''}
   </div></div>
-  ${!iTapped ? circles.map((c,i)=>`<button class="tap-circle c${i}" style="top:${c.top}%; left:${c.left}%;">اضغط!</button>`).join('') : ''}`;
+  ${!iGotOne ? circles.filter(c=>!claims[c.id]).map((c,i)=>`<button class="tap-circle c${i%2}" data-id="${escapeHTML(c.id)}" style="top:${c.top}%; left:${c.left}%;">اقعد!</button>`).join('') : ''}`;
 
-  if(!iTapped){
+  if(!iGotOne){
     document.querySelectorAll('.tap-circle').forEach(btn=>{
-      btn.onclick = submitChairsTap;
+      btn.onclick = ()=> claimChairsCircle(btn.dataset.id);
     });
   }
 }
@@ -3064,8 +3069,8 @@ function renderDrawResult(round){
   if(state.isHost) document.getElementById('draw-next').onclick = matchOver ? drawFinishMatch : nextDrawRound;
 }
 
-/* ---- سين جيم: شاشات المراحل ---- */
-/* ---- سين جيم: معالج الإعداد (3 خطوات) ---- */
+/* ---- سين ميم: شاشات المراحل ---- */
+/* ---- سين ميم: معالج الإعداد (3 خطوات) ---- */
 function renderTriviaSetup1(){
   state.triviaLocal = newTriviaLocalState();
   const t = state.triviaLocal;
@@ -3074,7 +3079,7 @@ function renderTriviaSetup1(){
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card">
-      <h2 style="text-align:center; margin-bottom:6px;">سين جيم — إعداد سريع</h2>
+      <h2 style="text-align:center; margin-bottom:6px;">سين ميم — إعداد سريع</h2>
       <p style="text-align:center; color:var(--text-dim); font-size:13px; margin-bottom:22px;">خطوة 1 من 3 — أسماء الفريقين</p>
       <div class="field"><label>🔴 اسم الفريق الأول</label><input id="team-a-name" value="${escapeHTML(t.teamNames.A)}" maxlength="20"></div>
       <div class="field"><label>🔵 اسم الفريق الثاني</label><input id="team-b-name" value="${escapeHTML(t.teamNames.B)}" maxlength="20"></div>
@@ -3107,7 +3112,7 @@ function renderTriviaSetup2(){
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card">
-      <h2 style="text-align:center; margin-bottom:6px;">سين جيم — إعداد سريع</h2>
+      <h2 style="text-align:center; margin-bottom:6px;">سين ميم — إعداد سريع</h2>
       <p style="text-align:center; color:var(--text-dim); font-size:13px; margin-bottom:22px;">خطوة 2 من 3 — وسائل المساعدة لكل فريق</p>
       ${rowFor('A')}
       <div class="divider"></div>
@@ -3131,7 +3136,7 @@ function renderTriviaSetup3(){
   <button class="back-btn" id="back">${svgIcon('back')}</button>
   <div class="wrap">
     <div class="card cat-pick-card-wrap">
-      <h2 style="text-align:center; margin-bottom:6px;">سين جيم — إعداد سريع</h2>
+      <h2 style="text-align:center; margin-bottom:6px;">سين ميم — إعداد سريع</h2>
       <p style="text-align:center; color:var(--text-dim); font-size:13px; margin-bottom:6px;">خطوة 3 من 3 — اختر 6 فئات</p>
       <p style="text-align:center; color:var(--text-dim); font-size:12px; margin-bottom:18px;" id="cat-counter">0 / 6 مختارة</p>
       ${!cats.length ? `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}ما في فئات بالبنك — ضيف أسئلة من لوحة التحكم أولاً</div>` : `
@@ -3166,7 +3171,7 @@ function renderTriviaSetup3(){
   };
 }
 
-/* ---- سين جيم: شريط علوي ثابت بالنقاط ودور اللعب (يظهر باللوحة وبالسؤال) ---- */
+/* ---- سين ميم: شريط علوي ثابت بالنقاط ودور اللعب (يظهر باللوحة وبالسؤال) ---- */
 function triviaHudHTML(){
   const t = state.triviaLocal;
   return `<div class="trivia-hud">
@@ -3199,7 +3204,7 @@ function wireTriviaHud(){
   const turnBtn = document.getElementById('trivia-turn-indicator');
   if(turnBtn) turnBtn.onclick = toggleTriviaTurn;
   const exitBtn = document.getElementById('trivia-exit');
-  if(exitBtn) exitBtn.onclick = ()=>{ if(confirm('طلعت من سين جيم؟')) exitTriviaLocal(); };
+  if(exitBtn) exitBtn.onclick = ()=>{ if(confirm('طلعت من سين ميم؟')) exitTriviaLocal(); };
 }
 
 /* شاشة النتيجة النهائية — تظهر تلقائياً لما تُستخدم كل خلايا اللوحة */
@@ -3215,7 +3220,7 @@ function renderTriviaLocalFinal(){
     <div class="trivia-stage-inner" style="max-width:520px;">
       <div class="trivia-logo">
         <span class="trivia-logo-diamond">◆</span>
-        <h1>سين جيم</h1>
+        <h1>سين ميم</h1>
         <span class="trivia-logo-diamond">◆</span>
       </div>
       <div class="trivia-qcard" style="align-items:center;">
@@ -3253,7 +3258,7 @@ function renderTriviaLocalBoard(){
     <div class="trivia-stage-inner">
       <div class="trivia-logo">
         <span class="trivia-logo-diamond">◆</span>
-        <h1>سين جيم</h1>
+        <h1>سين ميم</h1>
         <span class="trivia-logo-diamond">◆</span>
       </div>
 
@@ -3300,7 +3305,7 @@ function renderTriviaPreQuestion(){
     <div class="trivia-stage-inner" style="max-width:520px;">
       <div class="trivia-logo trivia-logo-sm">
         <span class="trivia-logo-diamond">◆</span>
-        <h1>سين جيم</h1>
+        <h1>سين ميم</h1>
         <span class="trivia-logo-diamond">◆</span>
       </div>
       ${triviaHudHTML()}
@@ -3339,7 +3344,7 @@ function renderTriviaLocalQuestion(){
     <div class="trivia-stage-inner" style="max-width:560px;">
       <div class="trivia-logo trivia-logo-sm">
         <span class="trivia-logo-diamond">◆</span>
-        <h1>سين جيم</h1>
+        <h1>سين ميم</h1>
         <span class="trivia-logo-diamond">◆</span>
       </div>
       ${triviaHudHTML()}

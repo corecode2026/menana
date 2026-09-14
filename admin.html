@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>لوحة التحكم — منصّة الألعاب</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -125,7 +126,7 @@ const GAMES_META = [
   {id:"chairs", tab:"الكراسي الموسيقية", defaultName:"الكراسي الموسيقية", defaultTagline:"النسخة الأونلاين من اللعبة الكلاسيكية — قف الموسيقى وكن الأسرع!"},
   {id:"guesswho", tab:"شو معي؟", defaultName:"شو معي؟", defaultTagline:"لشخصين بس — كل واحد شايف صورة التاني وعليه يسأله ليعرف شو معه"},
   {id:"draw", tab:"خمن", defaultName:"خمن", defaultTagline:"لاعب وحد يرسم كلمة سرية على لوحة مشتركة، وباقي اللاعبين يخمنوا شو هي"},
-  {id:"trivia", tab:"سين جيم", defaultName:"سين جيم", defaultTagline:"فريقين يتنافسون بالإجابة على أسئلة — جاوب صح أو خلي الفريق التاني يسرق النقطة"}
+  {id:"trivia", tab:"سين ميم", defaultName:"سين ميم", defaultTagline:"فريقين يتنافسون بالإجابة على أسئلة — جاوب صح أو خلي الفريق التاني يسرق النقطة"}
 ];
 
 function escapeHTML(str){ return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
@@ -276,7 +277,7 @@ async function renderDashboard(){
       <p class="hint">لعبة "خمن" تستخدم نفس "بنك الكلمات (احتياطي)" الموجود بالتبويب الأخير لاختيار الكلمات يلي يرسمها اللاعبون — لا حاجة لبنك منفصل.</p>
     </div>
 
-    <!-- تبويب: سين جيم -->
+    <!-- تبويب: سين ميم -->
     <div class="tab-panel" id="tab-trivia">
       <div class="card"><div class="section-title">🎮 الاسم والوصف</div><div id="name-card-trivia"></div></div>
       <div class="card">
@@ -298,7 +299,7 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="section-title">❓ بنك الأسئلة (لوحة فئات × نقاط)</div>
-        <p class="hint">نفس نظام سين جيم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة. رفع الصور والفيديوهات يستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية" — لازم يكون معبّى هناك أولاً.</p>
+        <p class="hint">نفس نظام سين ميم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة. رفع الصور والفيديوهات يستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية" — لازم يكون معبّى هناك أولاً.</p>
         <div id="trivia-questions-list">جارِ التحميل…</div>
         <div class="divider"></div>
         <div class="row2">
@@ -501,7 +502,7 @@ async function loadAllDefaults(){
   };
 }
 
-/* ---- بنك أسئلة سين جيم ---- */
+/* ---- بنك أسئلة سين ميم ---- */
 let TRIVIA_QUESTIONS_CACHE = {};
 
 function startEditTriviaQuestion(key){
@@ -647,7 +648,7 @@ async function loadTriviaQuestions(){
   });
 }
 
-/* ---- صور فئات سين جيم ---- */
+/* ---- صور فئات سين ميم ---- */
 let TRIVIA_CAT_IMAGES_CACHE = {};
 
 function startEditTriviaCategoryImage(key){

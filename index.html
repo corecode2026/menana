@@ -1936,7 +1936,9 @@ function watchLiveGuessesAsDrawer(round){
   const targetNorm = normalizeGuessText(myWord);
   if(!targetNorm || targetNorm.length < 2) return; // حماية إضافية من تطابق كلمات قصيرة جداً بالغلط
   const already = round.correctGuessers||{};
+  const hadAnyCorrectBefore = Object.keys(already).length > 0;
   let nextRank = Object.keys(already).length + 1;
+  let foundNewMatch = false;
   Object.entries(liveGuesses).forEach(([uid, text])=>{
     if(uid===round.drawerUid) return;
     if(already[uid]!==undefined) return;
@@ -1945,17 +1947,16 @@ function watchLiveGuessesAsDrawer(round){
       db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(nextRank).catch(()=>{});
       already[uid] = nextRank; // نمنع معالجة نفس الشخص مرتين خلال نفس الاستدعاء لو توازت عدة تطابقات
       nextRank++;
+      foundNewMatch = true;
     }
   });
+  if(foundNewMatch && !hadAnyCorrectBefore){
+    // أول تخمين صحيح بهالجولة — ننهي الجولة تلقائياً فوراً وتوزّع النقاط (الهوست هو من ينفّذ فعلياً عبر watchDrawAsHost)
+    db.ref(`rooms/${state.roomCode}/round/finishRequested`).set(true).catch(()=>{});
+  }
 }
 
 /* الرسّام يطلب إنهاء الجولة فوراً (بعد ما حدا خمّن صح مثلاً) — الهوست هو من ينفّذ الإنهاء الفعلي والنقاط */
-async function requestFinishDrawRound(){
-  if(!state.roomCode || !state.room.round) return;
-  if(state.uid !== state.room.round.drawerUid) return;
-  await db.ref(`rooms/${state.roomCode}/round/finishRequested`).set(true);
-}
-
 function watchDrawAsHost(round){
   if(!state.isHost || round.phase!=="drawing") return;
   if(round.finishRequested){ finalizeDrawRound(); }
@@ -1989,12 +1990,25 @@ async function finalizeDrawRound(){
   const mine = round.assignments ? round.assignments[round.drawerUid] : null;
   await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:'', finishRequested:false});
   await db.ref(`rooms/${code}/meta/phase`).set("result");
+
+  // انتقال تلقائي كامل: نعرض نتيجة الجولة كم ثانية، وبعدها نبلش الجولة التالية لحالها بدون أي ضغطة
+  clearTimeout(finalizeDrawRound._autoT);
+  finalizeDrawRound._autoT = setTimeout(async ()=>{
+    const s2 = await db.ref(`rooms/${code}/round`).get();
+    const r2 = s2.val();
+    if(!r2 || r2.phase!=="result") return; // تصرّف الهوست يدوياً أصلاً أو انتقلت الحالة
+    const matchOver = (r2.index||1) >= (state.room.settings.totalRounds||3);
+    if(matchOver) drawFinishMatch(); else nextDrawRound();
+  }, 4500);
 }
 
 async function nextDrawRound(){
   if(!state.isHost) return;
   const code = state.roomCode;
-  const round = state.room.round;
+  clearTimeout(finalizeDrawRound._autoT);
+  const snap = await db.ref(`rooms/${code}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="result") return; // انتقلت أصلاً (ربما عبر الانتقال التلقائي)
   const settings = state.room.settings;
   const nextIndex = (round.index||1)+1;
   const nextDrawerUid = round.drawOrder[(nextIndex-1) % round.drawOrder.length];
@@ -2012,6 +2026,10 @@ async function nextDrawRound(){
 
 async function drawFinishMatch(){
   if(!state.isHost) return;
+  clearTimeout(finalizeDrawRound._autoT);
+  const snap = await db.ref(`rooms/${state.roomCode}/round`).get();
+  const round = snap.val();
+  if(!round || round.phase!=="result") return;
   await db.ref(`rooms/${state.roomCode}/meta`).update({status:"finished", phase:"finished"});
 }
 
@@ -3132,7 +3150,6 @@ function renderDrawPhase(round){
         ${["#1a1a1a","#e63946","#2a9d8f","#f4a300","#3a86ff","#ffffff"].map((c,i)=>`<button class="color-dot ${i===0?'active':''}" data-c="${c}" style="background:${c};"></button>`).join('')}
       </div>
       <button class="btn btn-secondary btn-sm" id="clear-canvas" style="margin-top:6px;">🧹 امسح الكل</button>
-      <button class="btn btn-primary btn-sm" id="finish-round-btn" style="margin-top:6px;">✅ إنهاء الجولة الآن</button>
     ` : (iAmCorrect
         ? `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح!</div>`
         : `<div class="field" style="width:100%; margin-top:6px;" id="guess-input-wrap"><input id="guess-input" placeholder="اكتب تخمينك هون…" maxlength="40" autocomplete="off"></div>`)}
@@ -3209,10 +3226,6 @@ function renderDrawPhase(round){
       await db.ref(`rooms/${state.roomCode}/round/clearSeq`).set(newSeq);
       await db.ref(`rooms/${state.roomCode}/round/strokes`).set(null);
     };
-    document.getElementById('finish-round-btn').onclick = function(){
-      this.disabled = true; this.textContent = 'جارِ الإنهاء…';
-      requestFinishDrawRound();
-    };
 
     let drawing=false, lastX=0, lastY=0;
     function pos(e){
@@ -3260,7 +3273,8 @@ function renderDrawResult(round){
     </div>
     <div class="hint-row" style="justify-content:center;">${svgIcon('info')}باقي اللاعبين أخذوا +3 نقاط تشجيعية</div>` : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}ما حدا خمّن صح هالجولة 😅 — ولا نقاط هالمرة</div>`}
 
-    ${state.isHost ? `<button class="btn btn-primary" id="draw-next" style="margin-top:20px;">${svgIcon('play')}${matchOver?'عرض النتيجة النهائية':'الجولة التالية'}</button>`
+    <div class="hint-row" style="justify-content:center; margin-top:6px;">${svgIcon('info')}${matchOver?'رح تظهر النتيجة النهائية تلقائياً بعد شوي...':'الجولة الجاية رح تبلش تلقائياً بعد شوي...'}</div>
+    ${state.isHost ? `<button class="btn btn-primary" id="draw-next" style="margin-top:12px;">${svgIcon('play')}${matchOver?'عرض النتيجة الآن':'تخطي الانتظار'}</button>`
       : `<div class="hint-row" style="justify-content:center; margin-top:16px;">${svgIcon('info')}بانتظار الهوست للمتابعة…</div>`}
   </div></div>`;
 

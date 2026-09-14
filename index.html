@@ -651,6 +651,16 @@ input{font-family:var(--font-body);}
 .vote-tally{width:100%; margin-top:18px; display:flex; flex-direction:column; gap:8px;}
 .vote-tally .row{display:flex; justify-content:space-between; font-size:13.5px; color:var(--text-dim); padding:8px 12px; background:rgba(255,255,255,0.03); border-radius:10px;}
 
+.vote-count-badge{
+  font-size:11.5px; font-weight:800; color:var(--text-dim); background:rgba(255,255,255,0.06);
+  padding:4px 10px; border-radius:100px; white-space:nowrap;
+}
+.btn-icon.kick-btn{
+  width:32px; height:32px; border-radius:9px; background:rgba(255,84,112,0.14); color:#ff8fa3;
+  display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-inline-start:6px;
+}
+.btn-icon.kick-btn:hover{background:rgba(255,84,112,0.25);}
+
 .result-banner{padding:20px; border-radius:18px; text-align:center; font-family:var(--font-display); font-weight:900; font-size:22px; width:100%; margin-bottom:8px;}
 .result-win{background:rgba(61,220,151,0.15); color:var(--success); border:1px solid rgba(61,220,151,0.35);}
 .result-lose{background:rgba(255,84,112,0.13); color:#ff8fa3; border:1px solid rgba(255,84,112,0.3);}
@@ -1313,6 +1323,14 @@ function leaveRoom(){
   renderHome();
 }
 
+/* الهوست يطرد لاعباً من الغرفة نهائياً — يُحذف بيانات اللاعب بالكامل، وجهازه بيكتشف هذا تلقائياً ويطلع */
+async function kickPlayer(uid){
+  if(!state.isHost || !state.roomCode || uid===state.uid) return;
+  const name = state.room.players[uid] ? state.room.players[uid].name : 'هذا اللاعب';
+  if(!confirm(`طرد "${name}" من الغرفة؟`)) return;
+  await db.ref(`rooms/${state.roomCode}/players/${uid}`).set(null);
+}
+
 /* =========================================================================
    الاشتراك اللحظي بحالة الغرفة
    ========================================================================= */
@@ -1322,6 +1340,11 @@ function enterRoom(code){
   const cb = snap=>{
     const val = snap.val();
     if(!val){ toast("تم إغلاق الغرفة"); leaveRoom(); return; }
+    if(val.players && !val.players[state.uid]){
+      toast("تم طردك من الغرفة من قبل المضيف");
+      leaveRoom();
+      return;
+    }
     state.room = val;
     // نشتق تعييني الخاص من نفس اللقطة الذرية لقاعدة البيانات (مو من مستمع منفصل)
     // كي لا يصير تعارض توقيت بين تحديث بيانات الجولة وتحديث تعييني الخاص — وهو ما كان يسبب
@@ -2497,6 +2520,7 @@ function renderWaitingRoom(){
             <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
             <div class="name" style="flex:1;">${escapeHTML(p.name)}</div>
             ${uid===meta.hostId?'<span class="badge badge-host">الهوست</span>':'<span class="badge badge-ready">جاهز</span>'}
+            ${isHost && uid!==meta.hostId ? `<button class="btn-icon kick-btn" data-uid="${uid}" title="طرد من الغرفة">🚫</button>` : ''}
           </div>`).join('')}
       </div>
 
@@ -2540,6 +2564,9 @@ function renderWaitingRoom(){
     const startBtn = document.getElementById('start-btn');
     if(startBtn) startBtn.onclick = gameType==="chairs" ? startChairsMatch : gameType==="guesswho" ? startGuessMatch : gameType==="draw" ? startDrawMatch : startRound;
   }
+  document.querySelectorAll('.kick-btn').forEach(btn=>{
+    btn.onclick = ()=> kickPlayer(btn.dataset.uid);
+  });
   wireTopbar();
 }
 
@@ -2845,6 +2872,18 @@ function renderResults(round){
       ` : `<div class="wc-box" style="flex:1;"><div class="tag">شو كان</div><div class="em">${round.mainEmoji}</div><div class="wd">${escapeHTML(round.mainWord)}</div></div>`}
     </div>
 
+    <div class="section-title" style="width:100%;">عدد الأصوات لكل لاعب</div>
+    <div class="player-list" style="width:100%;">
+      ${Object.entries(players).filter(([uid,p])=>p.online!==false).sort((a,b)=>(tallyByTarget[b[0]]||0)-(tallyByTarget[a[0]]||0)).map(([uid,p])=>`
+        <div class="player-card">
+          <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
+          <div class="name" style="flex:1;">${escapeHTML(p.name)}${oddSet.has(uid)?' 🕵️':''}</div>
+          <span class="vote-count-badge">${tallyByTarget[uid]||0} صوت</span>
+          ${state.isHost && uid!==state.uid ? `<button class="btn-icon kick-btn" data-uid="${uid}" title="طرد من الغرفة">🚫</button>` : ''}
+        </div>`).join('')}
+    </div>
+
+    <div class="section-title" style="width:100%;">مين صوّت لمين</div>
     <div class="vote-tally">
       ${Object.entries(votes).map(([voter,target])=>`
         <div class="row"><span>${escapeHTML(players[voter]?players[voter].name:'')}</span><span>← صوّت لـ ${escapeHTML(players[target]?players[target].name:'')}</span></div>
@@ -2856,6 +2895,9 @@ function renderResults(round){
   </div></div>`;
 
   if(state.isHost) document.getElementById('next-btn').onclick = nextRoundOrFinish;
+  document.querySelectorAll('.kick-btn').forEach(btn=>{
+    btn.onclick = ()=> kickPlayer(btn.dataset.uid);
+  });
 }
 
 /* ---- الكراسي الموسيقية: شاشات المراحل ---- */

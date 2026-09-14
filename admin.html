@@ -285,7 +285,7 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="section-title">❓ بنك الأسئلة (لوحة فئات × نقاط)</div>
-        <p class="hint">نفس نظام سين جيم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة.</p>
+        <p class="hint">نفس نظام سين جيم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة. رفع الصور والفيديوهات يستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية" — لازم يكون معبّى هناك أولاً.</p>
         <div id="trivia-questions-list">جارِ التحميل…</div>
         <div class="divider"></div>
         <div class="row2">
@@ -303,6 +303,7 @@ async function renderDashboard(){
           </div>
         </div>
         <div class="field"><label>نص السؤال</label><input id="tq-question" placeholder="مثال: شو عاصمة الأردن؟"></div>
+        <div class="field"><label>الإجابة الصحيحة</label><input id="tq-answer" placeholder="مثال: عمّان"></div>
         <div class="field">
           <label>نوع السؤال</label>
           <div class="segmented" id="tq-mediatype">
@@ -311,23 +312,10 @@ async function renderDashboard(){
             <button data-v="video">فيديو</button>
           </div>
         </div>
-        <div class="field" id="tq-media-field" style="display:none;"><label>رابط الصورة/الفيديو</label><input id="tq-media-url" placeholder="https://example.com/photo.jpg"></div>
-        <div class="row2">
-          <div class="field"><label>الخيار 1</label><input id="tq-opt-0" placeholder="عمّان"></div>
-          <div class="field"><label>الخيار 2</label><input id="tq-opt-1" placeholder="بيروت"></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label>الخيار 3</label><input id="tq-opt-2" placeholder="دمشق"></div>
-          <div class="field"><label>الخيار 4</label><input id="tq-opt-3" placeholder="القاهرة"></div>
-        </div>
-        <div class="field">
-          <label>أي خيار هو الصحيح؟</label>
-          <div class="segmented" id="tq-correct">
-            <button data-v="0" class="active">1</button>
-            <button data-v="1">2</button>
-            <button data-v="2">3</button>
-            <button data-v="3">4</button>
-          </div>
+        <div class="field" id="tq-media-field" style="display:none;">
+          <label>ارفع صورة أو فيديو من جهازك</label>
+          <input type="file" id="tq-media-file" accept="image/*,video/*">
+          <div class="upload-status" id="tq-upload-status"></div>
         </div>
         <button class="btn btn-secondary btn-sm" id="add-question">+ إضافة سؤال</button>
       </div>
@@ -500,12 +488,6 @@ async function loadAllDefaults(){
 
 /* ---- بنك أسئلة سين جيم ---- */
 function wireTriviaQuestionForm(){
-  document.querySelectorAll('#tq-correct button').forEach(btn=>{
-    btn.onclick = ()=>{
-      document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-    };
-  });
   document.querySelectorAll('#tq-points button').forEach(btn=>{
     btn.onclick = ()=>{
       document.querySelectorAll('#tq-points button').forEach(b=>b.classList.remove('active'));
@@ -524,23 +506,50 @@ function wireTriviaQuestionForm(){
     const pointsBtn = document.querySelector('#tq-points button.active');
     const points = pointsBtn ? parseInt(pointsBtn.dataset.v,10) : 100;
     const question = document.getElementById('tq-question').value.trim();
+    const answer = document.getElementById('tq-answer').value.trim();
     const mediaTypeBtn = document.querySelector('#tq-mediatype button.active');
     const mediaType = mediaTypeBtn ? mediaTypeBtn.dataset.v : 'none';
-    const mediaUrl = document.getElementById('tq-media-url').value.trim();
-    const options = [0,1,2,3].map(i=>document.getElementById(`tq-opt-${i}`).value.trim());
-    const correctBtn = document.querySelector('#tq-correct button.active');
-    const correctIndex = correctBtn ? parseInt(correctBtn.dataset.v,10) : 0;
-    if(!category || !question || options.some(o=>!o)){ toast("عبّي الفئة والسؤال والخيارات الأربعة كلها"); return; }
-    if(mediaType!=="none" && !mediaUrl){ toast("الصق رابط الصورة أو الفيديو"); return; }
-    await db.ref('gameData/triviaQuestions').push({category, points, question, mediaType, mediaUrl: mediaType==="none"?'':mediaUrl, options, correctIndex});
+    const fileInput = document.getElementById('tq-media-file');
+    const file = fileInput.files[0];
+    const statusEl = document.getElementById('tq-upload-status');
+
+    if(!category || !question || !answer){ toast("عبّي الفئة والسؤال والإجابة الصحيحة"); return; }
+    if(mediaType!=="none" && !file){ toast("اختر ملف الصورة أو الفيديو من جهازك"); return; }
+
+    let mediaUrl = '';
+    if(mediaType!=="none"){
+      const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
+      const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
+      if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
+        toast("لازم تعبّي إعداد الرفع (Cloud name وUpload preset) بتبويب \"الكراسي الموسيقية\" أولاً");
+        return;
+      }
+      if(statusEl) statusEl.textContent = "جارِ الرفع…";
+      try{
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', cfg.uploadPreset);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {method:'POST', body:formData});
+        const data = await res.json();
+        if(!res.ok || !data.secure_url) throw new Error(data.error ? data.error.message : 'فشل الرفع');
+        mediaUrl = data.secure_url;
+        if(statusEl) statusEl.textContent = "تم الرفع ✅";
+      }catch(err){
+        console.error(err);
+        if(statusEl) statusEl.textContent = "فشل الرفع — تأكد من إعداد Cloudinary";
+        toast("فشل رفع الملف");
+        return;
+      }
+    }
+
+    await db.ref('gameData/triviaQuestions').push({category, points, question, answer, mediaType, mediaUrl});
     document.getElementById('tq-question').value = '';
-    document.getElementById('tq-media-url').value = '';
-    options.forEach((_,i)=>{ document.getElementById(`tq-opt-${i}`).value = ''; });
-    document.querySelectorAll('#tq-correct button').forEach(b=>b.classList.remove('active'));
-    document.querySelector('#tq-correct button[data-v="0"]').classList.add('active');
+    document.getElementById('tq-answer').value = '';
+    fileInput.value = '';
     document.querySelectorAll('#tq-mediatype button').forEach(b=>b.classList.remove('active'));
     document.querySelector('#tq-mediatype button[data-v="none"]').classList.add('active');
     document.getElementById('tq-media-field').style.display = 'none';
+    if(statusEl) statusEl.textContent = '';
     toast("تمت الإضافة ✅");
     loadTriviaQuestions();
   };
@@ -568,9 +577,7 @@ async function loadTriviaQuestions(){
           <div class="word-row" style="flex-wrap:wrap;">
             <div class="word" style="flex:1; min-width:200px;">
               <strong style="color:var(--violet-2);">${q.points||100} نقطة</strong> ${q.mediaType==='image'?'🖼️':q.mediaType==='video'?'🎬':''} — ${escapeHTML(q.question)}
-              <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">
-                ${(q.options||[]).map((o,i)=>`${i===q.correctIndex?'✅':'▫️'} ${escapeHTML(o)}`).join(' &nbsp; ')}
-              </div>
+              <div style="color:var(--text-dim); font-size:11.5px; margin-top:4px;">✅ ${escapeHTML(q.answer||'')}</div>
             </div>
             <button class="del" data-key="${escapeHTML(q.key)}">حذف</button>
           </div>`).join('')}

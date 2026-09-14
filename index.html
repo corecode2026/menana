@@ -283,13 +283,6 @@ input{font-family:var(--font-body);}
   font-family:var(--font-display); font-weight:800; font-size:19px; text-align:center; line-height:1.5;
   background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:16px; padding:20px; width:100%;
 }
-.trivia-options{display:flex; flex-direction:column; gap:10px; width:100%;}
-.trivia-opt{
-  padding:14px 18px; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--border);
-  color:var(--text); font-size:15px; text-align:right; transition:background .15s ease, border-color .15s ease;
-}
-.trivia-opt:not([disabled]):hover{background:rgba(124,92,255,0.14); border-color:var(--violet-2);}
-.trivia-opt[disabled]{opacity:0.55;}
 .team-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:100px; font-size:12px; font-weight:800;}
 .team-badge.A{background:rgba(255,84,112,0.16); color:#ff8fa3;}
 .team-badge.B{background:rgba(58,161,222,0.16); color:#7ec8f0;}
@@ -332,7 +325,10 @@ input{font-family:var(--font-body);}
 .trivia-legend .dot.A{background:#ff8fa3;}
 .trivia-legend .dot.B{background:#7ec8f0;}
 
-.trivia-opt.correct-opt{border-color:rgba(61,220,151,0.5); background:rgba(61,220,151,0.14); color:var(--success); font-weight:800;}
+.trivia-answer-reveal{
+  background:rgba(61,220,151,0.15); border:1px solid rgba(61,220,151,0.4); color:var(--success);
+  padding:12px 20px; border-radius:12px; font-weight:800; font-size:17px; text-align:center; width:100%;
+}
 
 .lifeline-row{display:flex; gap:8px; width:100%; margin-top:4px; flex-wrap:wrap; justify-content:center;}
 .lifeline-btn{
@@ -1739,7 +1735,7 @@ function detachDrawListeners(){
    يدير اللوحة والنقاط والوقت التذكيري، وكل القرارات (صح/غلط) يدوية من المضيف.
    ========================================================================= */
 const TRIVIA_LIFELINE_DEFS = [
-  {key:"fifty", label:"➗ حذف إجابتين"},
+  {key:"friend", label:"📞 اتصال بصديق"},
   {key:"swap", label:"🔄 تبديل السؤال"},
   {key:"extra", label:"⏱️ وقت إضافي"}
 ];
@@ -1747,10 +1743,10 @@ const TRIVIA_LIFELINE_DEFS = [
 function newTriviaLocalState(){
   return {
     teamNames:{A:"الفريق الأول", B:"الفريق الثاني"},
-    lifelinesEnabled:{A:{fifty:true,swap:true,extra:true}, B:{fifty:true,swap:true,extra:true}},
-    lifelinesUsed:{A:{fifty:false,swap:false,extra:false}, B:{fifty:false,swap:false,extra:false}},
+    lifelinesEnabled:{A:{friend:true,swap:true,extra:true}, B:{friend:true,swap:true,extra:true}},
+    lifelinesUsed:{A:{friend:false,swap:false,extra:false}, B:{friend:false,swap:false,extra:false}},
     categories:[], cells:[], scores:{A:0,B:0}, turn:"A",
-    currentCell:null, currentQuestion:null, revealed:false, removedOptions:[],
+    currentCell:null, currentQuestion:null, revealed:false,
     answerSeconds:20
   };
 }
@@ -1785,7 +1781,6 @@ function openTriviaCell(cellKey){
   t.currentCell = cell;
   t.currentQuestion = q || {question:"سؤال غير متوفر", options:["-","-","-","-"], correctIndex:0};
   t.revealed = false;
-  t.removedOptions = [];
   renderTriviaLocalQuestion();
 }
 
@@ -1797,18 +1792,15 @@ function useTriviaLifeline(type){
   if(!t.lifelinesEnabled[team][type] || t.lifelinesUsed[team][type]) return;
   t.lifelinesUsed[team][type] = true;
 
-  if(type==="fifty"){
-    const correct = t.currentQuestion.correctIndex;
-    const wrongIdxs = [0,1,2,3].filter(i=>i!==correct);
-    t.removedOptions = shuffleArr(wrongIdxs).slice(0,2);
-  } else if(type==="extra"){
+  if(type==="extra"){
     clearTimer();
     startRingCountdown(20000, 20000, ()=>{});
   } else if(type==="swap"){
     const sameCatQs = TRIVIA_QUESTIONS.filter(q=>(q.category||"عام")===cell.category && (q.points||100)===cell.points && q.id!==cell.questionId);
     const newQ = sameCatQs.length ? sameCatQs[Math.floor(Math.random()*sameCatQs.length)] : null;
-    if(newQ){ t.currentQuestion = newQ; cell.questionId = newQ.id; t.removedOptions = []; }
+    if(newQ){ t.currentQuestion = newQ; cell.questionId = newQ.id; }
   }
+  // "friend" (اتصال بصديق) ما بيحتاج أي تأثير برمجي — بس يُسجَّل كمستخدم، ويتفقوا مع صديقهم بره التطبيق
   renderTriviaLocalQuestion();
 }
 
@@ -1824,7 +1816,7 @@ function awardTriviaCell(winnerTeam){
   if(winnerTeam){ t.scores[winnerTeam] += cell.points; }
   cell.used = true;
   t.turn = cell.team==="A" ? "B" : "A";
-  t.currentCell = null; t.currentQuestion = null; t.revealed = false; t.removedOptions = [];
+  t.currentCell = null; t.currentQuestion = null; t.revealed = false;
   playSound(winnerTeam?'win':'lose');
   if(winnerTeam) launchConfetti();
   renderTriviaLocalBoard();
@@ -3031,9 +3023,7 @@ function renderTriviaLocalQuestion(){
     <div class="trivia-question">${escapeHTML(q.question)}</div>
     ${q.mediaType==="image" && q.mediaUrl ? `<img src="${escapeHTML(q.mediaUrl)}" style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;" alt="">` : ''}
     ${q.mediaType==="video" && q.mediaUrl ? `<video src="${escapeHTML(q.mediaUrl)}" controls style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;"></video>` : ''}
-    <div class="trivia-options">
-      ${q.options.map((opt,i)=>`<div class="trivia-opt ${t.revealed && i===q.correctIndex?'correct-opt':''}" style="${t.removedOptions.includes(i)?'opacity:0.25; text-decoration:line-through;':''}">${escapeHTML(opt)}${t.revealed && i===q.correctIndex?' ✅':''}</div>`).join('')}
-    </div>
+    ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
 
     <div class="lifeline-row">
       ${TRIVIA_LIFELINE_DEFS.filter(ll=>myLifelines[ll.key]).map(ll=>`<button class="lifeline-btn" data-ll="${ll.key}" ${usedLifelines[ll.key]?'disabled':''}>${ll.label}</button>`).join('')}
@@ -3062,7 +3052,7 @@ function renderTriviaLocalQuestion(){
   const awardB = document.getElementById('award-B'); if(awardB) awardB.onclick = ()=> awardTriviaCell('B');
   const awardNone = document.getElementById('award-none'); if(awardNone) awardNone.onclick = ()=> awardTriviaCell(null);
   document.getElementById('back-to-board').onclick = ()=>{
-    t.currentCell = null; t.currentQuestion = null; t.revealed = false; t.removedOptions = [];
+    t.currentCell = null; t.currentQuestion = null; t.revealed = false;
     renderTriviaLocalBoard();
   };
 }

@@ -626,15 +626,22 @@ input{font-family:var(--font-body);}
 .warn-msg{color:var(--danger); font-size:13px; margin-top:8px; min-height:18px;}
 
 /* ---- Voting ---- */
-.vote-grid{display:flex; flex-direction:column; gap:10px; width:100%; max-width:440px;}
+.vote-grid{display:flex; flex-direction:column; gap:12px; width:100%; max-width:440px;}
 .vote-card{
-  display:flex; align-items:center; gap:12px; padding:14px; background:rgba(255,255,255,0.04);
-  border:1px solid var(--border); border-radius:16px; transition:border-color .15s ease, background .15s ease;
+  display:flex; align-items:center; gap:14px; padding:16px 18px; background:rgba(255,255,255,0.045);
+  border:2px solid var(--border); border-radius:18px; transition:border-color .15s ease, background .15s ease, transform .12s ease, opacity .15s ease;
 }
-.vote-card.selected{border-color:var(--violet-2); background:rgba(124,92,255,0.14);}
-.vote-card.disabled{opacity:0.5;}
-.vote-card .name{flex:1; font-weight:700; font-size:15px;}
-.vote-count-note{color:var(--text-dim); font-size:13px; margin-top:14px;}
+.vote-card:not(:disabled):hover{border-color:rgba(255,255,255,0.25); background:rgba(255,255,255,0.07); transform:translateY(-2px);}
+.vote-card .avatar{width:44px; height:44px; font-size:16px; flex-shrink:0;}
+.vote-card .name{flex:1; font-weight:800; font-size:16.5px; color:#fff; text-align:right;}
+.vote-card.selected{border-color:var(--violet-2); background:rgba(124,92,255,0.18); box-shadow:0 0 0 3px rgba(124,92,255,0.18);}
+.vote-card.faded{opacity:0.4;}
+.vote-card:disabled{cursor:default;}
+.vote-check{color:var(--violet-2); display:flex; flex-shrink:0;}
+.vote-count-note{
+  color:var(--text-dim); font-size:13.5px; font-weight:600; margin-top:16px; text-align:center;
+  padding:10px 16px; background:rgba(255,255,255,0.04); border-radius:100px;
+}
 
 /* ---- Results ---- */
 .reveal-name{
@@ -2786,18 +2793,23 @@ function renderVoting(round){
   const myVote = votes[state.uid];
 
   appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:460px;">
-    <div class="phase-eyebrow">من برأيك "المختلف"؟</div>
+    <div class="phase-eyebrow">من برأيك "المختلف"؟ 🕵️</div>
     <div class="hint-row" style="justify-content:center;">${svgIcon('info')}صوّتوا براحتكم — ما في وقت محدد، بننتقل بمجرد ما يصوّت الكل</div>
     <div class="vote-grid">
-      ${players.map(([uid,p])=>`
-        <button class="vote-card ${myVote===uid?'selected':''} ${uid===state.uid||myVote?'disabled':''}" data-uid="${uid}" ${uid===state.uid?'disabled':''}>
+      ${players.map(([uid,p])=>{
+        const isMe = uid===state.uid;
+        const isSelected = myVote===uid;
+        const isFaded = myVote && !isSelected; // نعتّم بس الخيارات الأخرى بعد ما تصوّت، مش كل شي
+        return `
+        <button class="vote-card ${isSelected?'selected':''} ${isFaded?'faded':''}" data-uid="${uid}" ${(isMe||myVote)?'disabled':''}>
           <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
-          <div class="name">${escapeHTML(p.name)}</div>
-          ${myVote===uid?svgIcon('check'):''}
-        </button>`).join('')}
+          <div class="name">${escapeHTML(p.name)}${isMe?' (انت)':''}</div>
+          ${isSelected?`<span class="vote-check">${svgIcon('check')}</span>`:''}
+        </button>`;
+      }).join('')}
     </div>
-    <div class="vote-count-note">${Object.keys(votes).length} من ${players.length} صوّتوا${myVote?' — تم تسجيل تصويتك':''}</div>
-    ${state.isHost ? `<button class="btn btn-secondary btn-sm" id="end-voting-now" style="margin-top:14px;">⏹ إنهاء التصويت الآن</button>` : ''}
+    <div class="vote-count-note">${Object.keys(votes).length} من ${players.length} صوّتوا${myVote?' — تم تسجيل تصويتك ✅':''}</div>
+    ${state.isHost ? `<button class="btn btn-secondary" id="end-voting-now" style="margin-top:14px; width:100%;">⏹ إنهاء التصويت الآن</button>` : ''}
   </div></div>`;
 
   if(!myVote){

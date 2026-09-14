@@ -284,6 +284,18 @@ async function renderDashboard(){
         <button class="btn btn-primary btn-sm" id="save-def-trivia">حفظ الإعدادات الافتراضية</button>
       </div>
       <div class="card">
+        <div class="section-title">🖼️ صور الفئات</div>
+        <p class="hint">ضيف صورة لكل فئة (اختياري) — بتظهر خلفية لعنوان الفئة باللوحة، وكصورة مصغّرة وقت اختيار الفئات. بتستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية".</p>
+        <div id="trivia-cat-images-list">جارِ التحميل…</div>
+        <div class="divider"></div>
+        <div class="row2">
+          <div class="field"><label>اسم الفئة</label><input id="tci-category" placeholder="مثال: رياضة"></div>
+          <div class="field"><label>ارفع صورة من جهازك</label><input type="file" id="tci-file" accept="image/*"></div>
+        </div>
+        <div class="upload-status" id="tci-upload-status"></div>
+        <button class="btn btn-secondary btn-sm" id="add-cat-image">+ إضافة صورة الفئة</button>
+      </div>
+      <div class="card">
         <div class="section-title">❓ بنك الأسئلة (لوحة فئات × نقاط)</div>
         <p class="hint">نفس نظام سين جيم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة. رفع الصور والفيديوهات يستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية" — لازم يكون معبّى هناك أولاً.</p>
         <div id="trivia-questions-list">جارِ التحميل…</div>
@@ -392,6 +404,8 @@ async function renderDashboard(){
   await loadChairsSongs();
   wireTriviaQuestionForm();
   await loadTriviaQuestions();
+  wireTriviaCategoryImageForm();
+  await loadTriviaCategoryImages();
 }
 
 /* ---- الاسم والوصف لكل لعبة ---- */
@@ -591,6 +605,65 @@ async function loadTriviaQuestions(){
       await db.ref(`gameData/triviaQuestions/${btn.dataset.key}`).set(null);
       toast("تم حذف السؤال");
       loadTriviaQuestions();
+    };
+  });
+}
+
+/* ---- صور فئات سين جيم ---- */
+function wireTriviaCategoryImageForm(){
+  document.getElementById('add-cat-image').onclick = async ()=>{
+    const category = document.getElementById('tci-category').value.trim();
+    const fileInput = document.getElementById('tci-file');
+    const file = fileInput.files[0];
+    const statusEl = document.getElementById('tci-upload-status');
+    if(!category){ toast("اكتب اسم الفئة أولاً"); return; }
+    if(!file){ toast("اختر صورة من جهازك"); return; }
+
+    const cloudSnap = await db.ref('gameData/cloudinaryConfig').get();
+    const cfg = cloudSnap.exists() ? cloudSnap.val() : null;
+    if(!cfg || !cfg.cloudName || !cfg.uploadPreset){
+      toast("لازم تعبّي إعداد الرفع (Cloud name وUpload preset) بتبويب \"الكراسي الموسيقية\" أولاً");
+      return;
+    }
+
+    if(statusEl) statusEl.textContent = "جارِ الرفع…";
+    try{
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', cfg.uploadPreset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {method:'POST', body:formData});
+      const data = await res.json();
+      if(!res.ok || !data.secure_url) throw new Error(data.error ? data.error.message : 'فشل الرفع');
+      await db.ref('gameData/triviaCategoryImages').push({category, imageUrl:data.secure_url});
+      if(statusEl) statusEl.textContent = "تم الرفع ✅";
+      document.getElementById('tci-category').value = '';
+      fileInput.value = '';
+      toast("تمت الإضافة ✅");
+      loadTriviaCategoryImages();
+    }catch(err){
+      console.error(err);
+      if(statusEl) statusEl.textContent = "فشل الرفع — تأكد من إعداد Cloudinary";
+      toast("فشل رفع الصورة");
+    }
+  };
+}
+
+async function loadTriviaCategoryImages(){
+  const list = document.getElementById('trivia-cat-images-list');
+  const snap = await db.ref('gameData/triviaCategoryImages').get();
+  if(!snap.exists()){ list.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">لا توجد صور فئات بعد — اختيارية بالكامل.</p>`; return; }
+  const data = snap.val();
+  list.innerHTML = `<div class="img-grid">${Object.entries(data).map(([key,c])=>`
+    <div class="img-tile">
+      <img src="${escapeHTML(c.imageUrl)}" alt="" loading="lazy">
+      <button class="img-del" data-key="${escapeHTML(key)}">✕</button>
+      <div class="img-label">${escapeHTML(c.category)}</div>
+    </div>`).join('')}</div>`;
+  list.querySelectorAll('.img-del').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm("حذف صورة هذه الفئة؟")) return;
+      await db.ref(`gameData/triviaCategoryImages/${btn.dataset.key}`).set(null);
+      loadTriviaCategoryImages();
     };
   });
 }

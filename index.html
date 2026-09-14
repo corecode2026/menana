@@ -278,65 +278,125 @@ input{font-family:var(--font-body);}
 .policy-content h3{font-family:var(--font-display); font-size:16px; margin:18px 0 8px; color:var(--text);}
 .policy-content p{margin-bottom:6px;}
 
-/* ---- لعبة "سين جيم" ---- */
+/* ---- لعبة "سين جيم" — مسرح البرنامج ---- */
+.trivia-stage{
+  position:relative; min-height:100vh; width:100%; overflow:hidden;
+  background:
+    radial-gradient(ellipse 900px 500px at 50% -10%, rgba(212,160,41,0.16), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 10% 100%, rgba(163,64,31,0.14), transparent 55%),
+    radial-gradient(ellipse 700px 500px at 90% 100%, rgba(58,161,222,0.10), transparent 55%),
+    linear-gradient(180deg, #0a0710 0%, #0d0a14 50%, #08060c 100%);
+  display:flex; justify-content:center; padding:28px 14px 40px;
+}
+.trivia-stage-glow{
+  position:absolute; inset:0; pointer-events:none; opacity:0.5;
+  background-image:radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size:24px 24px;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%);
+}
+.trivia-stage-inner{position:relative; z-index:1; width:100%; max-width:760px; display:flex; flex-direction:column; align-items:center;}
+
+.trivia-logo{display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:20px;}
+.trivia-logo h1{
+  font-family:var(--font-display); font-weight:900; font-size:38px; letter-spacing:1px; margin:0;
+  background:linear-gradient(135deg, #ffe6a3 10%, #d4a029 55%, #a3401f 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  text-shadow:0 2px 24px rgba(212,160,41,0.35);
+}
+.trivia-logo-diamond{color:#d4a029; font-size:16px; opacity:0.75;}
+.trivia-logo-sm{margin-bottom:14px;}
+.trivia-logo-sm h1{font-size:24px;}
+
+/* شريط النقاط والدور الثابت */
+.trivia-hud{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  background:rgba(20,16,12,0.6); backdrop-filter:blur(10px); border:1px solid rgba(212,160,41,0.25);
+  border-radius:18px; padding:12px 16px; box-shadow:0 14px 34px rgba(0,0,0,0.35);
+}
+.trivia-hud-team{display:flex; align-items:center; gap:10px; flex:1;}
+.team-B-panel{justify-content:flex-end;}
+.trivia-hud-name{font-family:var(--font-display); font-weight:800; font-size:14px; white-space:nowrap;}
+.score-adjust{display:flex; align-items:center; gap:7px; font-family:var(--font-display); font-weight:900; font-size:19px;}
+.score-adjust span{min-width:34px; text-align:center;}
+.score-adjust button{
+  width:26px; height:26px; border-radius:8px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15);
+  color:var(--text); font-weight:800; font-size:15px; line-height:1; transition:background .12s ease;
+}
+.score-adjust button:hover{background:rgba(255,255,255,0.14);}
+.trivia-turn-wrap{display:flex; flex-direction:column; align-items:center; gap:4px; flex-shrink:0;}
+.trivia-turn-label{font-size:10px; color:var(--text-dim); font-weight:700; letter-spacing:0.5px;}
+.trivia-turn-btn{
+  border-radius:100px; padding:8px 18px; font-weight:800; font-size:12.5px; color:#fff; border:1px solid transparent;
+  transition:transform .12s ease;
+}
+.trivia-turn-btn.A{background:linear-gradient(135deg, #ff5470, #b3223f); box-shadow:0 6px 18px rgba(255,84,112,0.35);}
+.trivia-turn-btn.B{background:linear-gradient(135deg, #3aa1de, #1f5f8b); box-shadow:0 6px 18px rgba(58,161,222,0.35);}
+.trivia-turn-btn:hover{transform:scale(1.05);}
+
+/* اللوحة */
+.trivia-board{display:flex; flex-direction:column; gap:8px; width:100%; overflow-x:auto; padding:4px 2px;}
+.trivia-board-row{display:grid; grid-template-columns:92px repeat(6, minmax(48px,1fr)); gap:7px; align-items:center;}
+.trivia-cat-head{
+  padding:12px 6px; text-align:center; font-family:var(--font-display); font-weight:800; font-size:12px;
+  color:#ffe6a3; background:linear-gradient(160deg, rgba(212,160,41,0.22), rgba(163,64,31,0.14));
+  border:1px solid rgba(212,160,41,0.3); border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.trivia-cell{
+  aspect-ratio:1.25; border-radius:12px; color:#fff; font-family:var(--font-display); font-weight:800; font-size:16px;
+  border:1px solid rgba(255,255,255,0.14); transition:transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  position:relative; overflow:hidden;
+}
+.trivia-cell::after{content:''; position:absolute; inset:0; background:linear-gradient(160deg, rgba(255,255,255,0.18), transparent 55%); pointer-events:none;}
+.trivia-cell.team-A{background:linear-gradient(160deg, #ff5470 0%, #8a1c34 100%);}
+.trivia-cell.team-B{background:linear-gradient(160deg, #3aa1de 0%, #1a4a6b 100%);}
+.trivia-cell:not(:disabled):hover{transform:translateY(-3px); box-shadow:0 10px 22px rgba(0,0,0,0.4);}
+.trivia-cell.used{background:rgba(255,255,255,0.03); color:var(--text-dim); border-color:rgba(255,255,255,0.06);}
+.trivia-cell.used::after{display:none;}
+.trivia-cell.empty{background:transparent; border:none;}
+.trivia-cell:disabled{cursor:default;}
+.tc-pts{position:relative; z-index:1;}
+.tc-check{position:relative; z-index:1; opacity:0.6;}
+
+.trivia-legend{display:flex; gap:20px; justify-content:center; margin-top:14px; font-size:12.5px; color:var(--text-dim);}
+.trivia-legend .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-inline-end:5px;}
+.trivia-legend .dot.A{background:#ff5470;}
+.trivia-legend .dot.B{background:#3aa1de;}
+
+/* بطاقة السؤال */
+.trivia-qcard{
+  width:100%; margin-top:14px; padding:26px 22px; border-radius:22px;
+  background:rgba(20,16,12,0.55); backdrop-filter:blur(10px); border:1px solid rgba(212,160,41,0.25);
+  box-shadow:0 20px 50px rgba(0,0,0,0.4); display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.trivia-qcard-eyebrow{font-family:var(--font-display); font-weight:800; font-size:13px; color:#ffe6a3; text-align:center;}
 .trivia-question{
-  font-family:var(--font-display); font-weight:800; font-size:19px; text-align:center; line-height:1.5;
-  background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:16px; padding:20px; width:100%;
+  font-family:var(--font-display); font-weight:800; font-size:20px; text-align:center; line-height:1.55;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:22px; width:100%;
 }
 .team-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:100px; font-size:12px; font-weight:800;}
 .team-badge.A{background:rgba(255,84,112,0.16); color:#ff8fa3;}
 .team-badge.B{background:rgba(58,161,222,0.16); color:#7ec8f0;}
-.team-toggle{display:flex; gap:4px;}
-.team-toggle button{padding:5px 10px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid var(--border); background:rgba(255,255,255,0.04); color:var(--text-dim);}
-.team-toggle button.active.A{background:rgba(255,84,112,0.2); color:#ff8fa3; border-color:rgba(255,84,112,0.4);}
-.team-toggle button.active.B{background:rgba(58,161,222,0.2); color:#7ec8f0; border-color:rgba(58,161,222,0.4);}
-
-.trivia-scoreboard{display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; margin-bottom:6px;}
-.trivia-scoreboard .team-badge{font-size:15px; padding:8px 16px;}
-
-/* شريط النقاط والدور الثابت */
-.trivia-hud{
-  display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
-  background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:16px; padding:10px 14px;
-}
-.trivia-hud-team{display:flex; align-items:center; gap:8px;}
-.score-adjust{display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:800; font-size:16px;}
-.score-adjust button{width:24px; height:24px; border-radius:7px; background:rgba(255,255,255,0.08); border:1px solid var(--border); color:var(--text); font-weight:800; font-size:14px; line-height:1;}
-.trivia-turn-btn{background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:100px; padding:8px 16px; font-weight:800; font-size:12.5px; color:var(--text);}
-
-.trivia-board{display:flex; flex-direction:column; gap:6px; width:100%; overflow-x:auto;}
-.trivia-board-row{display:grid; grid-template-columns:80px repeat(6, minmax(46px,1fr)); gap:6px; align-items:center;}
-.trivia-cat-head{
-  padding:10px 4px; text-align:center; font-family:var(--font-display); font-weight:800; font-size:11.5px;
-  color:var(--text-dim); background:rgba(255,255,255,0.04); border-radius:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.trivia-cell{
-  aspect-ratio:1.3; border-radius:10px; color:#fff; font-family:var(--font-display); font-weight:800; font-size:14px;
-  border:1px solid rgba(255,255,255,0.12); transition:transform .12s ease, filter .12s ease;
-}
-.trivia-cell.team-A{background:linear-gradient(160deg, rgba(255,84,112,0.35), rgba(255,84,112,0.12));}
-.trivia-cell.team-B{background:linear-gradient(160deg, rgba(58,161,222,0.35), rgba(58,161,222,0.12));}
-.trivia-cell:not(:disabled):hover{transform:translateY(-2px); filter:brightness(1.15);}
-.trivia-cell.used{background:rgba(255,255,255,0.03); color:var(--text-dim); border-color:var(--border);}
-.trivia-cell.empty{background:transparent; border:none;}
-.trivia-cell:disabled{cursor:default;}
-.trivia-legend{display:flex; gap:18px; justify-content:center; margin-top:10px; font-size:12px; color:var(--text-dim);}
-.trivia-legend .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-inline-end:5px;}
-.trivia-legend .dot.A{background:#ff8fa3;}
-.trivia-legend .dot.B{background:#7ec8f0;}
 
 .trivia-answer-reveal{
   background:rgba(61,220,151,0.15); border:1px solid rgba(61,220,151,0.4); color:var(--success);
-  padding:12px 20px; border-radius:12px; font-weight:800; font-size:17px; text-align:center; width:100%;
+  padding:14px 20px; border-radius:14px; font-weight:800; font-size:18px; text-align:center; width:100%;
 }
 
-.lifeline-row{display:flex; gap:8px; width:100%; margin-top:4px; flex-wrap:wrap; justify-content:center;}
+.lifeline-row{display:flex; gap:8px; width:100%; flex-wrap:wrap; justify-content:center;}
 .lifeline-btn{
   padding:9px 14px; border-radius:100px; background:rgba(255,255,255,0.05); border:1px solid var(--border);
   color:var(--text-dim); font-size:12px; font-weight:700;
 }
 .lifeline-btn:not(:disabled):hover{background:rgba(255,209,102,0.15); border-color:rgba(255,209,102,0.4); color:#ffd166;}
 .lifeline-btn:disabled{opacity:0.35;}
+
+@media (max-width:640px){
+  .trivia-logo h1{font-size:26px;}
+  .trivia-board-row{grid-template-columns:60px repeat(6, minmax(38px,1fr)); gap:5px;}
+  .trivia-cat-head{font-size:10px; padding:8px 3px;}
+  .trivia-cell{font-size:13px;}
+  .trivia-hud-name{display:none;}
+}
 
 /* معالج الإعداد (اختيار الفرق والوسائل) */
 .lifeline-setup-team{display:flex; flex-direction:column; gap:10px; margin-bottom:6px;}
@@ -1829,9 +1889,12 @@ function adjustTriviaScore(team, delta){
 }
 
 function toggleTriviaTurn(){
-  state.triviaLocal.turn = state.triviaLocal.turn==="A" ? "B" : "A";
+  const turn = state.triviaLocal.turn = state.triviaLocal.turn==="A" ? "B" : "A";
   const el = document.getElementById('trivia-turn-indicator');
-  if(el) el.textContent = state.triviaLocal.turn==="A" ? `🔴 ${state.triviaLocal.teamNames.A}` : `🔵 ${state.triviaLocal.teamNames.B}`;
+  if(el){
+    el.textContent = turn==="A" ? `🔴 ${state.triviaLocal.teamNames.A}` : `🔵 ${state.triviaLocal.teamNames.B}`;
+    el.classList.remove('A','B'); el.classList.add(turn);
+  }
 }
 
 function exitTriviaLocal(){
@@ -2954,22 +3017,25 @@ function renderTriviaSetup3(){
 function triviaHudHTML(){
   const t = state.triviaLocal;
   return `<div class="trivia-hud">
-    <div class="trivia-hud-team">
-      <span class="team-badge A">🔴 ${escapeHTML(t.teamNames.A)}</span>
+    <div class="trivia-hud-team team-A-panel">
+      <div class="trivia-hud-name">🔴 ${escapeHTML(t.teamNames.A)}</div>
       <div class="score-adjust">
         <button data-team="A" data-d="-1">−</button>
         <span id="trivia-score-A">${t.scores.A}</span>
         <button data-team="A" data-d="1">+</button>
       </div>
     </div>
-    <button class="trivia-turn-btn" id="trivia-turn-indicator" title="اضغط لتبديل الدور (تذكير بصري فقط)">${t.turn==="A"?`🔴 ${escapeHTML(t.teamNames.A)}`:`🔵 ${escapeHTML(t.teamNames.B)}`}</button>
-    <div class="trivia-hud-team">
+    <div class="trivia-turn-wrap">
+      <div class="trivia-turn-label">دور</div>
+      <button class="trivia-turn-btn ${t.turn}" id="trivia-turn-indicator" title="اضغط لتبديل الدور (تذكير بصري فقط)">${t.turn==="A"?`🔴 ${escapeHTML(t.teamNames.A)}`:`🔵 ${escapeHTML(t.teamNames.B)}`}</button>
+    </div>
+    <div class="trivia-hud-team team-B-panel">
       <div class="score-adjust">
         <button data-team="B" data-d="-1">−</button>
         <span id="trivia-score-B">${t.scores.B}</span>
         <button data-team="B" data-d="1">+</button>
       </div>
-      <span class="team-badge B">🔵 ${escapeHTML(t.teamNames.B)}</span>
+      <div class="trivia-hud-name">🔵 ${escapeHTML(t.teamNames.B)}</div>
     </div>
   </div>`;
 }
@@ -2985,24 +3051,35 @@ function wireTriviaHud(){
 
 function renderTriviaLocalBoard(){
   const t = state.triviaLocal;
-  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:680px;">
-    ${triviaHudHTML()}
-    <div class="trivia-board" style="margin-top:10px;">
-      ${t.categories.map(cat=>`
-        <div class="trivia-board-row">
-          <div class="trivia-cat-head" style="min-width:90px;">${escapeHTML(cat)}</div>
-          ${["A","B"].map(team=>[100,300,600].map(pts=>{
-            const cell = t.cells.find(c=>c.category===cat && c.team===team && c.points===pts);
-            return `<button class="trivia-cell team-${team} ${cell.used?'used':''}" data-key="${cell.key}" ${cell.used?'disabled':''}>${cell.used?'✔':pts}</button>`;
-          }).join('')).join('')}
-        </div>`).join('')}
+  appRoot().innerHTML = `<div class="trivia-stage">
+    <div class="trivia-stage-glow"></div>
+    <div class="trivia-stage-inner">
+      <div class="trivia-logo">
+        <span class="trivia-logo-diamond">◆</span>
+        <h1>سين جيم</h1>
+        <span class="trivia-logo-diamond">◆</span>
+      </div>
+
+      ${triviaHudHTML()}
+
+      <div class="trivia-board" style="margin-top:16px;">
+        ${t.categories.map(cat=>`
+          <div class="trivia-board-row">
+            <div class="trivia-cat-head"><span>${escapeHTML(cat)}</span></div>
+            ${["A","B"].map(team=>[100,300,600].map(pts=>{
+              const cell = t.cells.find(c=>c.category===cat && c.team===team && c.points===pts);
+              return `<button class="trivia-cell team-${team} ${cell.used?'used':''}" data-key="${cell.key}" ${cell.used?'disabled':''}>${cell.used?'<span class=\"tc-check\">✔</span>':`<span class="tc-pts">${pts}</span>`}</button>`;
+            }).join('')).join('')}
+          </div>`).join('')}
+      </div>
+
+      <div class="trivia-legend">
+        <span><span class="dot A"></span> ${escapeHTML(t.teamNames.A)}</span>
+        <span><span class="dot B"></span> ${escapeHTML(t.teamNames.B)}</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="trivia-exit" style="margin-top:16px;">إنهاء اللعبة والخروج</button>
     </div>
-    <div class="trivia-legend">
-      <span><span class="dot A"></span> ${escapeHTML(t.teamNames.A)}</span>
-      <span><span class="dot B"></span> ${escapeHTML(t.teamNames.B)}</span>
-    </div>
-    <button class="btn btn-ghost btn-sm" id="trivia-exit" style="margin-top:14px;">إنهاء اللعبة والخروج</button>
-  </div></div>`;
+  </div>`;
   wireTriviaHud();
   document.querySelectorAll('.trivia-cell:not(.used)').forEach(btn=>{
     btn.onclick = ()=> openTriviaCell(btn.dataset.key);
@@ -3016,29 +3093,39 @@ function renderTriviaLocalQuestion(){
   const myLifelines = t.lifelinesEnabled[cell.team];
   const usedLifelines = t.lifelinesUsed[cell.team];
 
-  appRoot().innerHTML = `<div class="wrap"><div class="center-stage" style="max-width:560px;">
-    ${triviaHudHTML()}
-    <div class="phase-eyebrow" style="margin-top:8px;">${teamLabel} — ${cell.category} — ${cell.points} نقطة</div>
-    ${timerRingHTML()}
-    <div class="trivia-question">${escapeHTML(q.question)}</div>
-    ${q.mediaType==="image" && q.mediaUrl ? `<img src="${escapeHTML(q.mediaUrl)}" style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;" alt="">` : ''}
-    ${q.mediaType==="video" && q.mediaUrl ? `<video src="${escapeHTML(q.mediaUrl)}" controls style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;"></video>` : ''}
-    ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
+  appRoot().innerHTML = `<div class="trivia-stage">
+    <div class="trivia-stage-glow"></div>
+    <div class="trivia-stage-inner" style="max-width:560px;">
+      <div class="trivia-logo trivia-logo-sm">
+        <span class="trivia-logo-diamond">◆</span>
+        <h1>سين جيم</h1>
+        <span class="trivia-logo-diamond">◆</span>
+      </div>
+      ${triviaHudHTML()}
+      <div class="trivia-qcard">
+        <div class="trivia-qcard-eyebrow">${teamLabel} — ${escapeHTML(cell.category)} — ${cell.points} نقطة</div>
+        ${timerRingHTML()}
+        <div class="trivia-question">${escapeHTML(q.question)}</div>
+        ${q.mediaType==="image" && q.mediaUrl ? `<img src="${escapeHTML(q.mediaUrl)}" style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;" alt="">` : ''}
+        ${q.mediaType==="video" && q.mediaUrl ? `<video src="${escapeHTML(q.mediaUrl)}" controls style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;"></video>` : ''}
+        ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
 
-    <div class="lifeline-row">
-      ${TRIVIA_LIFELINE_DEFS.filter(ll=>myLifelines[ll.key]).map(ll=>`<button class="lifeline-btn" data-ll="${ll.key}" ${usedLifelines[ll.key]?'disabled':''}>${ll.label}</button>`).join('')}
+        <div class="lifeline-row">
+          ${TRIVIA_LIFELINE_DEFS.filter(ll=>myLifelines[ll.key]).map(ll=>`<button class="lifeline-btn" data-ll="${ll.key}" ${usedLifelines[ll.key]?'disabled':''}>${ll.label}</button>`).join('')}
+        </div>
+
+        ${!t.revealed
+          ? `<button class="btn btn-primary" id="reveal-answer" style="width:100%; margin-top:10px;">🙈 إظهار الإجابة</button>`
+          : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}مين جاوب صح؟</div>
+             <div class="btn-row" style="width:100%; margin-top:8px;">
+               <button class="btn btn-primary" id="award-A">🔴 ${escapeHTML(t.teamNames.A)}</button>
+               <button class="btn btn-primary" id="award-B">🔵 ${escapeHTML(t.teamNames.B)}</button>
+             </div>
+             <button class="btn btn-ghost btn-sm" id="award-none" style="width:100%; margin-top:8px;">محدا جاوب صح</button>`}
+        <button class="btn btn-ghost btn-sm" id="back-to-board" style="width:100%; margin-top:10px;">↩ رجوع للوحة بدون نقاط</button>
+      </div>
     </div>
-
-    ${!t.revealed
-      ? `<button class="btn btn-primary" id="reveal-answer" style="width:100%; margin-top:10px;">🙈 إظهار الإجابة</button>`
-      : `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}مين جاوب صح؟</div>
-         <div class="btn-row" style="width:100%; margin-top:8px;">
-           <button class="btn btn-primary" id="award-A">🔴 ${escapeHTML(t.teamNames.A)}</button>
-           <button class="btn btn-primary" id="award-B">🔵 ${escapeHTML(t.teamNames.B)}</button>
-         </div>
-         <button class="btn btn-ghost btn-sm" id="award-none" style="width:100%; margin-top:8px;">محدا جاوب صح</button>`}
-    <button class="btn btn-ghost btn-sm" id="back-to-board" style="width:100%; margin-top:10px;">↩ رجوع للوحة بدون نقاط</button>
-  </div></div>`;
+  </div>`;
 
   startRingCountdown(20000, 20000, ()=>{}); // عداد تذكيري بصري فقط (20 ثانية)، ما بيغيّر أي شي لما يخلص
   wireTriviaHud();

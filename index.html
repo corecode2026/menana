@@ -453,6 +453,17 @@ input{font-family:var(--font-body);}
 .color-row{display:flex; gap:9px; margin-top:12px; flex-wrap:wrap; justify-content:center;}
 .color-dot{width:30px; height:30px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); transition:transform .12s ease;}
 .color-dot:active, .color-dot.active{transform:scale(1.15); border-color:var(--violet-2);}
+.tool-row{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; justify-content:center;}
+.tool-btn{
+  width:40px; height:40px; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid var(--border);
+  font-size:18px; display:flex; align-items:center; justify-content:center; transition:background .12s ease, border-color .12s ease;
+}
+.tool-btn:hover{background:rgba(255,255,255,0.09);}
+.tool-btn.active{background:rgba(124,92,255,0.18); border-color:var(--violet-2);}
+.brush-size-row{display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px;}
+.brush-size-row .brush-size-label{font-size:13px; color:var(--text-dim);}
+.brush-btn{width:32px; height:32px; border-radius:9px; background:rgba(255,255,255,0.06); border:1px solid var(--border); font-weight:800; font-size:16px;}
+.brush-btn:hover{background:rgba(255,255,255,0.12);}
 .draw-word-banner{
   background:rgba(61,220,151,0.15); border:1px solid rgba(61,220,151,0.4); color:var(--success);
   padding:10px 20px; border-radius:12px; font-weight:800; font-size:17px; text-align:center; width:100%;
@@ -1916,7 +1927,7 @@ async function startDrawMatch(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:1, drawOrder, drawerUid:drawOrder[0],
     assignments:{ [drawOrder[0]]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
+    strokes:{}, fills:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
@@ -2033,7 +2044,7 @@ async function nextDrawRound(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:nextIndex, drawOrder:round.drawOrder, drawerUid:nextDrawerUid,
     assignments:{ [nextDrawerUid]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
+    strokes:{}, fills:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:nextIndex});
@@ -3190,6 +3201,18 @@ function renderDrawPhase(round){
       <div class="color-row" id="color-row">
         ${["#1a1a1a","#e63946","#2a9d8f","#f4a300","#3a86ff","#ffffff"].map((c,i)=>`<button class="color-dot ${i===0?'active':''}" data-c="${c}" style="background:${c};"></button>`).join('')}
       </div>
+      <div class="tool-row" id="tool-row">
+        <button class="tool-btn active" data-tool="pen" title="قلم">✏️</button>
+        <button class="tool-btn" data-tool="fill" title="دلو دهان">🪣</button>
+        <button class="tool-btn" data-tool="rect" title="مربع">⬜</button>
+        <button class="tool-btn" data-tool="circle" title="دائرة">⭕</button>
+        <button class="tool-btn" data-tool="triangle" title="مثلث">🔺</button>
+      </div>
+      <div class="brush-size-row">
+        <button id="brush-dec" class="brush-btn">−</button>
+        <span class="brush-size-label">حجم الفرشاة: <b id="brush-size-val">5</b></span>
+        <button id="brush-inc" class="brush-btn">+</button>
+      </div>
       <button class="btn btn-secondary btn-sm" id="clear-canvas" style="margin-top:6px;">🧹 امسح الكل</button>
     ` : (iAmCorrect
         ? `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح! بننتظر الباقي أو انتهاء الوقت</div>`
@@ -3216,11 +3239,85 @@ function renderDrawPhase(round){
     ctx.stroke();
   }
 
+  function hexToRgb(hex){
+    const v = parseInt(hex.replace('#',''),16);
+    return {r:(v>>16)&255, g:(v>>8)&255, b:v&255};
+  }
+
+  /* دلو الدهان — يملأ المنطقة المتصلة بنفس اللون بدءاً من نقطة الضغط، مثل أي برنامج رسم بسيط */
+  function floodFill(px, py, fillColor){
+    const w = canvas.width, h = canvas.height;
+    px = Math.max(0, Math.min(w-1, px|0)); py = Math.max(0, Math.min(h-1, py|0));
+    const imgData = ctx.getImageData(0,0,w,h);
+    const data = imgData.data;
+    const startIdx = (py*w+px)*4;
+    const startR=data[startIdx], startG=data[startIdx+1], startB=data[startIdx+2], startA=data[startIdx+3];
+    const fillRgb = hexToRgb(fillColor);
+    if(startR===fillRgb.r && startG===fillRgb.g && startB===fillRgb.b && startA===255) return; // نفس اللون أصلاً
+
+    const tolerance = 45; // سماحية بسيطة لتفادي حواف الخطوط المسنّنة
+    const matches = idx =>
+      Math.abs(data[idx]-startR)<=tolerance && Math.abs(data[idx+1]-startG)<=tolerance &&
+      Math.abs(data[idx+2]-startB)<=tolerance && Math.abs(data[idx+3]-startA)<=tolerance;
+
+    const stack = [[px,py]];
+    const visited = new Uint8Array(w*h);
+    while(stack.length){
+      const [x,y] = stack.pop();
+      if(x<0||x>=w||y<0||y>=h) continue;
+      const p = y*w+x;
+      if(visited[p]) continue;
+      const idx = p*4;
+      if(!matches(idx)) continue;
+      visited[p] = 1;
+      data[idx]=fillRgb.r; data[idx+1]=fillRgb.g; data[idx+2]=fillRgb.b; data[idx+3]=255;
+      stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+    }
+    ctx.putImageData(imgData,0,0);
+  }
+
+  /* يحوّل شكلاً (مربع/دائرة/مثلث) بين نقطتين لمجموعة خطوط، عشان نستخدم نفس آلية بث الخطوط الموجودة أصلاً */
+  function shapeToSegments(tool, x0, y0, x1, y1){
+    if(tool==="rect"){
+      return [[x0,y0,x1,y0],[x1,y0,x1,y1],[x1,y1,x0,y1],[x0,y1,x0,y0]];
+    }
+    if(tool==="triangle"){
+      const midX = (x0+x1)/2;
+      return [[midX,y0,x1,y1],[x1,y1,x0,y1],[x0,y1,midX,y0]];
+    }
+    if(tool==="circle"){
+      const cx=x0, cy=y0, rx=Math.abs(x1-x0), ry=Math.abs(y1-y0);
+      const segs = []; const steps = 28;
+      let prevX=cx+rx, prevY=cy;
+      for(let i=1;i<=steps;i++){
+        const ang = (i/steps)*Math.PI*2;
+        const nx = cx+rx*Math.cos(ang), ny = cy+ry*Math.sin(ang);
+        segs.push([prevX,prevY,nx,ny]);
+        prevX=nx; prevY=ny;
+      }
+      return segs;
+    }
+    return [];
+  }
+  function drawShapePreview(tool, x0, y0, x1, y1, strokeColor, lineWidth){
+    shapeToSegments(tool, x0, y0, x1, y1).forEach(([sx0,sy0,sx1,sy1])=>{
+      paintSegment({x0:sx0/canvas.width, y0:sy0/canvas.height, x1:sx1/canvas.width, y1:sy1/canvas.height, c:strokeColor, s:lineWidth});
+    });
+  }
+
   detachDrawListeners();
   const strokesRef = db.ref(`rooms/${state.roomCode}/round/strokes`);
   const onStroke = snap=>{ const s = snap.val(); if(s) paintSegment(s); };
   strokesRef.on('child_added', onStroke);
   state.drawListeners.push([strokesRef, 'child_added', onStroke]);
+
+  const fillsRef = db.ref(`rooms/${state.roomCode}/round/fills`);
+  const onFill = snap=>{
+    const f = snap.val();
+    if(f) floodFill(f.x*canvas.width, f.y*canvas.height, f.c);
+  };
+  fillsRef.on('child_added', onFill);
+  state.drawListeners.push([fillsRef, 'child_added', onFill]);
 
   let lastClearSeq = round.clearSeq||0;
   const clearRef = db.ref(`rooms/${state.roomCode}/round/clearSeq`);
@@ -3256,14 +3353,27 @@ function renderDrawPhase(round){
   state.drawListeners.push([correctGuessersRef, 'value', onCorrectGuessersChange]);
 
   if(isDrawer){
-    let color = "#1a1a1a", size = 5;
+    let color = "#1a1a1a", size = 5, currentTool = "pen";
     document.querySelectorAll('.color-dot').forEach(btn=>{
       btn.onclick = ()=>{
-        color = btn.dataset.c; size = (btn.dataset.c==="#ffffff") ? 16 : 5; // أبيض = ممحاة تقريباً
+        color = btn.dataset.c;
+        if(btn.dataset.c==="#ffffff") size = 16; // أبيض = ممحاة تقريباً
+        document.getElementById('brush-size-val').textContent = size;
         document.querySelectorAll('.color-dot').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
       };
     });
+    document.querySelectorAll('.tool-btn').forEach(btn=>{
+      btn.onclick = ()=>{
+        currentTool = btn.dataset.tool;
+        document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+      };
+    });
+    const brushValEl = document.getElementById('brush-size-val');
+    document.getElementById('brush-dec').onclick = ()=>{ size = Math.max(2, size-2); brushValEl.textContent = size; };
+    document.getElementById('brush-inc').onclick = ()=>{ size = Math.min(30, size+2); brushValEl.textContent = size; };
+
     document.getElementById('clear-canvas').onclick = async ()=>{
       ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
       const newSeq = (round.clearSeq||0)+1;
@@ -3271,10 +3381,12 @@ function renderDrawPhase(round){
       round.clearSeq = newSeq;
       await db.ref(`rooms/${state.roomCode}/round/clearSeq`).set(newSeq);
       await db.ref(`rooms/${state.roomCode}/round/strokes`).set(null);
+      await db.ref(`rooms/${state.roomCode}/round/fills`).set(null);
     };
 
-    let drawing=false, lastX=0, lastY=0;
+    let drawing=false, lastX=0, lastY=0, curX=0, curY=0;
     let lastBroadcastX=0, lastBroadcastY=0, lastBroadcastTime=0;
+    let shapeSnapshot = null;
     function pos(e){
       const rect = canvas.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -3282,31 +3394,55 @@ function renderDrawPhase(round){
       return {x:(clientX-rect.left)/rect.width, y:(clientY-rect.top)/rect.height};
     }
     canvas.addEventListener('pointerdown', e=>{
-      e.preventDefault(); drawing=true;
-      const p=pos(e); lastX=p.x; lastY=p.y;
+      e.preventDefault();
+      const p=pos(e);
+      if(currentTool==="fill"){
+        floodFill(p.x*canvas.width, p.y*canvas.height, color);
+        db.ref(`rooms/${state.roomCode}/round/fills`).push({x:p.x, y:p.y, c:color});
+        return;
+      }
+      drawing=true; lastX=p.x; lastY=p.y; curX=p.x; curY=p.y;
       lastBroadcastX=p.x; lastBroadcastY=p.y; lastBroadcastTime=Date.now();
+      if(currentTool!=="pen") shapeSnapshot = ctx.getImageData(0,0,canvas.width,canvas.height);
     });
     canvas.addEventListener('pointermove', e=>{
       if(!drawing) return; e.preventDefault();
       const p = pos(e);
-      // رسم محلي فوري وسلس عند الرسّام نفسه — ما بينتظر رحلة الذهاب والإياب لقاعدة البيانات
-      paintSegment({x0:lastX, y0:lastY, x1:p.x, y1:p.y, c:color, s:size});
-      lastX = p.x; lastY = p.y;
+      curX = p.x; curY = p.y;
 
-      // بث محدود المعدّل لباقي اللاعبين (كل ~40 ملي ثانية بدل كل حركة إصبع/فأرة) —
-      // كانت اللعبة ترسل عشرات التحديثات بالثانية بدون أي حد، وهذا كان يُغرق كل الأجهزة المتصلة ويُعلّقها
-      const now = Date.now();
-      if(now - lastBroadcastTime >= 40){
-        db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:p.x,y1:p.y,c:color,s:size});
-        lastBroadcastX = p.x; lastBroadcastY = p.y; lastBroadcastTime = now;
+      if(currentTool==="pen"){
+        // رسم محلي فوري وسلس عند الرسّام نفسه — ما بينتظر رحلة الذهاب والإياب لقاعدة البيانات
+        paintSegment({x0:lastX, y0:lastY, x1:p.x, y1:p.y, c:color, s:size});
+        lastX = p.x; lastY = p.y;
+
+        // بث محدود المعدّل لباقي اللاعبين (كل ~40 ملي ثانية بدل كل حركة إصبع/فأرة) —
+        // كانت اللعبة ترسل عشرات التحديثات بالثانية بدون أي حد، وهذا كان يُغرق كل الأجهزة المتصلة ويُعلّقها
+        const now = Date.now();
+        if(now - lastBroadcastTime >= 40){
+          db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:p.x,y1:p.y,c:color,s:size});
+          lastBroadcastX = p.x; lastBroadcastY = p.y; lastBroadcastTime = now;
+        }
+      } else {
+        // أداة شكل: نعيد رسم اللقطة الأصلية ثم نرسم معاينة الشكل الحالي فوقها (تأثير "شد وإفلات" بدون أثر)
+        if(shapeSnapshot) ctx.putImageData(shapeSnapshot, 0, 0);
+        drawShapePreview(currentTool, lastX*canvas.width, lastY*canvas.height, p.x*canvas.width, p.y*canvas.height, color, size);
       }
     });
     window.addEventListener('pointerup', ()=>{
-      if(drawing && (lastBroadcastX!==lastX || lastBroadcastY!==lastY)){
-        // نبعت آخر جزء من الخط ما انبعت لسا، كي ما تضل فجوة صغيرة بآخر الخط عند باقي اللاعبين
-        db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:lastX,y1:lastY,c:color,s:size});
+      if(!drawing) return;
+      if(currentTool==="pen"){
+        if(lastBroadcastX!==lastX || lastBroadcastY!==lastY){
+          // نبعت آخر جزء من الخط ما انبعت لسا، كي ما تضل فجوة صغيرة بآخر الخط عند باقي اللاعبين
+          db.ref(`rooms/${state.roomCode}/round/strokes`).push({x0:lastBroadcastX,y0:lastBroadcastY,x1:lastX,y1:lastY,c:color,s:size});
+        }
+      } else {
+        const segs = shapeToSegments(currentTool, lastX*canvas.width, lastY*canvas.height, curX*canvas.width, curY*canvas.height);
+        segs.forEach(([sx0,sy0,sx1,sy1])=>{
+          const seg = {x0:sx0/canvas.width, y0:sy0/canvas.height, x1:sx1/canvas.width, y1:sy1/canvas.height, c:color, s:size};
+          db.ref(`rooms/${state.roomCode}/round/strokes`).push(seg);
+        });
       }
-      drawing=false;
+      drawing=false; shapeSnapshot=null;
     });
   } else if(!iAmCorrect){
     const guessInput = document.getElementById('guess-input');

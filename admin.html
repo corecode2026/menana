@@ -710,7 +710,10 @@ async function loadTriviaQuestions(){
     <div class="cat-block open">
       <div class="cat-head">
         <div><span class="name">${escapeHTML(cat)}</span><span class="count">(${qs.length} سؤال)</span></div>
-        <span class="toggle-arrow">▾</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn-icon del-cat-trivia" data-cat="${escapeHTML(cat)}" title="حذف الفئة كاملة">🗑️</button>
+          <span class="toggle-arrow">▾</span>
+        </div>
       </div>
       <div class="cat-body">
         ${qs.sort((a,b)=>(a.points||0)-(b.points||0)).map(q=>`
@@ -725,7 +728,23 @@ async function loadTriviaQuestions(){
       </div>
     </div>`).join('');
   list.querySelectorAll('.cat-head').forEach(head=>{
-    head.addEventListener('click', ()=> head.closest('.cat-block').classList.toggle('open'));
+    head.addEventListener('click', e=>{
+      if(e.target.closest('.del-cat-trivia')) return; // ما نطوي/نفتح الفئة لو الضغطة كانت على زر الحذف
+      head.closest('.cat-block').classList.toggle('open');
+    });
+  });
+  list.querySelectorAll('.del-cat-trivia').forEach(btn=>{
+    btn.onclick = async e=>{
+      e.stopPropagation();
+      const cat = btn.dataset.cat;
+      const qs = byCategory[cat]||[];
+      if(!confirm(`حذف فئة "${cat}" بالكامل؟ (${qs.length} سؤال رح تنحذف نهائياً)`)) return;
+      const updates = {};
+      qs.forEach(q=>{ updates[q.key] = null; });
+      await db.ref('gameData/triviaQuestions').update(updates);
+      toast(`تم حذف فئة "${cat}" بالكامل`);
+      loadTriviaQuestions();
+    };
   });
   list.querySelectorAll('.edit-question').forEach(btn=>{
     btn.onclick = ()=> startEditTriviaQuestion(btn.dataset.key);

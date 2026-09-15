@@ -457,13 +457,17 @@ input{font-family:var(--font-body);}
   background:rgba(61,220,151,0.15); border:1px solid rgba(61,220,151,0.4); color:var(--success);
   padding:10px 20px; border-radius:12px; font-weight:800; font-size:17px; text-align:center; width:100%;
 }
-.live-guess-list{display:flex; flex-direction:column; gap:8px;}
-.live-guess-text{
-  color:var(--text-dim); font-size:13.5px; max-width:55%; overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; direction:rtl;
+.guess-log-list{
+  display:flex; flex-direction:column; gap:6px; width:100%; max-height:220px; overflow-y:auto;
+  padding:10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:14px;
 }
-.player-card.correct-guess{background:rgba(61,220,151,0.1); border-color:rgba(61,220,151,0.35);}
-.player-card.correct-guess .live-guess-text{color:var(--success); font-weight:800; font-size:16px;}
+.guess-log-row{display:flex; align-items:baseline; gap:8px; padding:6px 8px; border-radius:8px; font-size:13.5px;}
+.guess-log-name{font-weight:800; color:var(--text-dim); flex-shrink:0;}
+.guess-log-text{color:var(--text); word-break:break-word;}
+.guess-log-row.correct{background:rgba(61,220,151,0.12);}
+.guess-log-row.correct .guess-log-text{color:var(--success); font-weight:800;}
+.guess-send-row{display:flex; gap:8px; width:100%; margin-top:6px;}
+.guess-send-row input{flex:1;}
 
 /* ---- شريط تحكم عائم أثناء اللعب (مغادرة / إنهاء للجميع) ---- */
 .game-controls-bar{position:fixed; top:14px; inset-inline-start:14px; z-index:60; display:flex; gap:8px;}
@@ -1912,7 +1916,7 @@ async function startDrawMatch(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:1, drawOrder, drawerUid:drawOrder[0],
     assignments:{ [drawOrder[0]]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, liveGuesses:{}, revealedWord:null, clearSeq:0, finishRequested:false,
+    strokes:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({status:"playing", phase:"countdown", round:1});
@@ -1940,97 +1944,78 @@ function normalizeGuessText(text){
     .replace(/\s+/g, '');
 }
 
-/* أي لاعب (غير الرسّام) يكتب تخمينه لحظياً — يُبَث للجميع كي يظهر "شو الكل قاعد يكتب" */
-let _liveGuessDebounce = null;
-function submitLiveGuess(text){
+/* لاعب (غير الرسّام) يرسل تخمينه كرسالة صريحة (بعد ما يضغط إرسال/Enter) — تُضاف لسجل عام يشوفه الجميع */
+async function submitDrawGuess(text){
   const round = state.room.round;
   if(!round || round.phase!=="drawing") return;
   if(state.uid === round.drawerUid) return;
   if(round.correctGuessers && round.correctGuessers[state.uid]!==undefined) return; // خمّن صح أصلاً، خلص
-  clearTimeout(_liveGuessDebounce);
-  _liveGuessDebounce = setTimeout(()=>{
-    db.ref(`rooms/${state.roomCode}/round/liveGuesses/${state.uid}`).set(text).catch(()=>{});
-  }, 220);
+  const trimmed = String(text||'').trim();
+  if(!trimmed) return;
+  await db.ref(`rooms/${state.roomCode}/round/drawGuesses`).push({uid:state.uid, text:trimmed}).catch(()=>{});
 }
 
-/* الرسّام (وهو الوحيد يلي يعرف الكلمة الصحيحة) بيراقب كل التخمينات الحيّة، وبمجرد ما توحدة توصل نفس الكلمة، تُعلَّم صح تلقائياً */
-let _lastLiveGuessesJSON = null;
-function watchLiveGuessesAsDrawer(round){
-  if(state.uid !== round.drawerUid) return;
-  const liveGuesses = round.liveGuesses||{};
-  const json = JSON.stringify(liveGuesses);
-  if(json === _lastLiveGuessesJSON) return; // ما تغيّر شي بالتخمينات (النداء صار بسبب تحديث تاني متل خط رسم) — لا داعي نعيد الفحص
-  _lastLiveGuessesJSON = json;
-
+/* الرسّام (وهو الوحيد يلي يعرف الكلمة الصحيحة) يفحص كل رسالة تخمين جديدة توصل، ويعلّم صاحبها صح تلقائياً لو طابقت —
+   بدون ما ينهي الجولة فوراً؛ الجولة تضل مفتوحة لباقي اللاعبين لحد ما ينتهي الوقت */
+function checkAndMarkGuess(uid, text){
+  const round = state.room.round;
+  if(!round || state.uid !== round.drawerUid) return;
+  if(round.correctGuessers && round.correctGuessers[uid]!==undefined) return; // خمّن صح قبل هيك
   const myWord = state.myAssignment ? state.myAssignment.word : null;
   if(!myWord) return;
   const targetNorm = normalizeGuessText(myWord);
-  if(!targetNorm || targetNorm.length < 2) return; // حماية إضافية من تطابق كلمات قصيرة جداً بالغلط
-  const already = round.correctGuessers||{};
-  const hadAnyCorrectBefore = Object.keys(already).length > 0;
-  let nextRank = Object.keys(already).length + 1;
-  let foundNewMatch = false;
-  Object.entries(liveGuesses).forEach(([uid, text])=>{
-    if(uid===round.drawerUid) return;
-    if(already[uid]!==undefined) return;
-    const guessNorm = normalizeGuessText(text);
-    if(guessNorm && guessNorm === targetNorm){
-      db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(nextRank).catch(()=>{});
-      already[uid] = nextRank; // نمنع معالجة نفس الشخص مرتين خلال نفس الاستدعاء لو توازت عدة تطابقات
-      nextRank++;
-      foundNewMatch = true;
-    }
-  });
-  if(foundNewMatch && !hadAnyCorrectBefore){
-    // أول تخمين صحيح بهالجولة — ننهي الجولة تلقائياً فوراً وتوزّع النقاط (الهوست هو من ينفّذ فعلياً عبر watchDrawAsHost)
-    db.ref(`rooms/${state.roomCode}/round/finishRequested`).set(true).catch(()=>{});
+  if(!targetNorm || targetNorm.length < 2) return; // حماية من تطابق كلمات قصيرة جداً بالغلط
+  if(normalizeGuessText(text) === targetNorm){
+    const rank = Object.keys(round.correctGuessers||{}).length + 1;
+    db.ref(`rooms/${state.roomCode}/round/correctGuessers/${uid}`).set(rank).catch(()=>{});
   }
-}
-
-/* الرسّام يطلب إنهاء الجولة فوراً (بعد ما حدا خمّن صح مثلاً) — الهوست هو من ينفّذ الإنهاء الفعلي والنقاط */
-function watchDrawAsHost(round){
-  if(!state.isHost || round.phase!=="drawing") return;
-  if(round.finishRequested){ finalizeDrawRound(); }
 }
 
 /* نقاط ثابتة: الرسّام 10، أول من خمّن صح 8، وكل الباقين (بمن فيهم من خمّن صح لاحقاً) 3 نقاط تشجيعية —
    فقط إذا في تخمين صحيح واحد على الأقل هالجولة؛ إذا محدا خمّن صح، محدا ياخد نقاط */
+let _finalizingDrawRound = false;
 async function finalizeDrawRound(){
   if(!state.isHost) return;
-  const code = state.roomCode;
-  clearTimeout(advanceDrawToDrawing._t);
-  const snap = await db.ref(`rooms/${code}/round`).get();
-  const round = snap.val();
-  if(!round || round.phase!=="drawing") return;
-  const players = state.room.players;
-  const guessers = round.correctGuessers||{};
-  const scoreUpdates = {};
+  if(_finalizingDrawRound) return; // يمنع تشغيل الدالة أكثر من مرة بنفس الوقت (كان يسبب تعليق فعلي)
+  _finalizingDrawRound = true;
+  try{
+    const code = state.roomCode;
+    clearTimeout(advanceDrawToDrawing._t);
+    const snap = await db.ref(`rooms/${code}/round`).get();
+    const round = snap.val();
+    if(!round || round.phase!=="drawing") return;
+    const players = state.room.players;
+    const guessers = round.correctGuessers||{};
+    const scoreUpdates = {};
 
-  if(Object.keys(guessers).length){
-    const firstUid = Object.entries(guessers).sort((a,b)=>a[1]-b[1])[0][0];
-    scoreUpdates[`players/${round.drawerUid}/score`] = (players[round.drawerUid].score||0) + 10;
-    scoreUpdates[`players/${firstUid}/score`] = (players[firstUid].score||0) + 8;
-    (round.drawOrder||[]).forEach(uid=>{
-      if(uid!==round.drawerUid && uid!==firstUid){
-        scoreUpdates[`players/${uid}/score`] = (players[uid].score||0) + 3;
-      }
-    });
+    if(Object.keys(guessers).length){
+      const firstUid = Object.entries(guessers).sort((a,b)=>a[1]-b[1])[0][0];
+      scoreUpdates[`players/${round.drawerUid}/score`] = (players[round.drawerUid].score||0) + 10;
+      scoreUpdates[`players/${firstUid}/score`] = (players[firstUid].score||0) + 8;
+      (round.drawOrder||[]).forEach(uid=>{
+        if(uid!==round.drawerUid && uid!==firstUid){
+          scoreUpdates[`players/${uid}/score`] = (players[uid].score||0) + 3;
+        }
+      });
+    }
+    if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
+
+    const mine = round.assignments ? round.assignments[round.drawerUid] : null;
+    await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:''});
+    await db.ref(`rooms/${code}/meta/phase`).set("result");
+
+    // انتقال تلقائي كامل: نعرض نتيجة الجولة كم ثانية، وبعدها نبلش الجولة التالية لحالها بدون أي ضغطة
+    clearTimeout(finalizeDrawRound._autoT);
+    finalizeDrawRound._autoT = setTimeout(async ()=>{
+      const s2 = await db.ref(`rooms/${code}/round`).get();
+      const r2 = s2.val();
+      if(!r2 || r2.phase!=="result") return; // تصرّف الهوست يدوياً أصلاً أو انتقلت الحالة
+      const matchOver = (r2.index||1) >= (state.room.settings.totalRounds||3);
+      if(matchOver) drawFinishMatch(); else nextDrawRound();
+    }, 4500);
+  } finally {
+    _finalizingDrawRound = false;
   }
-  if(Object.keys(scoreUpdates).length) await db.ref(`rooms/${code}`).update(scoreUpdates);
-
-  const mine = round.assignments ? round.assignments[round.drawerUid] : null;
-  await db.ref(`rooms/${code}/round`).update({phase:"result", revealedWord: mine?mine.word:'', finishRequested:false});
-  await db.ref(`rooms/${code}/meta/phase`).set("result");
-
-  // انتقال تلقائي كامل: نعرض نتيجة الجولة كم ثانية، وبعدها نبلش الجولة التالية لحالها بدون أي ضغطة
-  clearTimeout(finalizeDrawRound._autoT);
-  finalizeDrawRound._autoT = setTimeout(async ()=>{
-    const s2 = await db.ref(`rooms/${code}/round`).get();
-    const r2 = s2.val();
-    if(!r2 || r2.phase!=="result") return; // تصرّف الهوست يدوياً أصلاً أو انتقلت الحالة
-    const matchOver = (r2.index||1) >= (state.room.settings.totalRounds||3);
-    if(matchOver) drawFinishMatch(); else nextDrawRound();
-  }, 4500);
 }
 
 async function nextDrawRound(){
@@ -2048,7 +2033,7 @@ async function nextDrawRound(){
   await db.ref(`rooms/${code}/round`).set({
     type:"draw", index:nextIndex, drawOrder:round.drawOrder, drawerUid:nextDrawerUid,
     assignments:{ [nextDrawerUid]: {word:word.main, emoji:word.mainEmoji} },
-    strokes:{}, correctGuessers:{}, liveGuesses:{}, revealedWord:null, clearSeq:0, finishRequested:false,
+    strokes:{}, correctGuessers:{}, drawGuesses:{}, revealedWord:null, clearSeq:0,
     phase:"countdown", phaseEndAt: Date.now()+3200
   });
   await db.ref(`rooms/${code}/meta`).update({phase:"countdown", round:nextIndex});
@@ -2583,10 +2568,8 @@ function renderPlayingPhase(){
   const gameType = state.room.meta.gameType||"different";
 
   // مرحلة الرسم الحيّة: نتجاهل أي إعادة رسم متكررة لنفس الجولة (كل خط رسم يسبب تحديثاً بقاعدة البيانات)
-  // كي لا تُمسح اللوحة كل مرة — التحديث اللحظي للخطوط يتم عبر مستمع منفصل داخل renderDrawPhase نفسها
+  // كي لا تُمسح اللوحة كل مرة — تحديث الخطوط وفحص التخمينات الجديدة يتم عبر مستمعات منفصلة داخل renderDrawPhase نفسها
   if(gameType==="draw" && round.phase==="drawing"){
-    if(state.isHost) watchDrawAsHost(round);
-    watchLiveGuessesAsDrawer(round);
     const key = `draw-${round.index}`;
     if(state.currentDrawKey === key) return;
     state.currentDrawKey = key;
@@ -3155,28 +3138,30 @@ function renderGuessResult(round){
 
 /* ---- خمن: شاشة الرسم الحيّة ---- */
 /* يحدّث لوحة "شو الكل قاعد يكتب" مباشرة بدون إعادة رسم كامل الشاشة — كي ما تنمسح لوحة الرسم */
-function updateLiveGuessPanel(round){
-  const container = document.getElementById('live-guess-list');
+let _drawGuessLog = []; // سجل محلي بالتخمينات المُرسَلة لهاي الجولة (يُبنى تراكمياً من child_added)
+
+function renderGuessLogPanel(){
+  const container = document.getElementById('guess-log-list');
   if(!container) return;
-  const others = Object.entries(state.room.players).filter(([uid,p])=>uid!==round.drawerUid && p.online!==false);
+  const round = state.room.round || {};
   const correctGuessers = round.correctGuessers||{};
-  const liveGuesses = round.liveGuesses||{};
-  container.innerHTML = others.map(([uid,p])=>{
-    const isCorrectNow = correctGuessers[uid]!==undefined;
-    const liveText = liveGuesses[uid]||'';
+  const players = state.room.players;
+  container.innerHTML = _drawGuessLog.map(g=>{
+    const isCorrectNow = correctGuessers[g.uid]!==undefined;
+    const name = players[g.uid] ? players[g.uid].name : '';
     return `
-      <div class="player-card ${isCorrectNow?'correct-guess':''}">
-        <div class="avatar" style="background:${avatarColor(uid)}">${escapeHTML(initials(p.name))}</div>
-        <div class="name" style="flex:1;">${escapeHTML(p.name)}</div>
-        <div class="live-guess-text">${isCorrectNow ? '✅' : escapeHTML(liveText)}</div>
+      <div class="guess-log-row ${isCorrectNow?'correct':''}">
+        <span class="guess-log-name">${escapeHTML(name)}</span>
+        <span class="guess-log-text">${isCorrectNow ? '✅ خمّن صح!' : escapeHTML(g.text)}</span>
       </div>`;
-  }).join('');
+  }).join('') || `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}لسا محدا خمّن...</div>`;
+  container.scrollTop = container.scrollHeight;
 
   if(state.uid!==round.drawerUid){
     const iAmCorrect = correctGuessers[state.uid]!==undefined;
     const inputWrap = document.getElementById('guess-input-wrap');
     if(iAmCorrect && inputWrap && inputWrap.tagName!=='DIV'){
-      inputWrap.outerHTML = `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح!</div>`;
+      inputWrap.outerHTML = `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح! بننتظر الباقي أو انتهاء الوقت</div>`;
     }
   }
 }
@@ -3206,14 +3191,15 @@ function renderDrawPhase(round){
       </div>
       <button class="btn btn-secondary btn-sm" id="clear-canvas" style="margin-top:6px;">🧹 امسح الكل</button>
     ` : (iAmCorrect
-        ? `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح!</div>`
-        : `<div class="field" style="width:100%; margin-top:6px;" id="guess-input-wrap"><input id="guess-input" placeholder="اكتب تخمينك هون…" maxlength="40" autocomplete="off"></div>`)}
+        ? `<div class="draw-word-banner" id="guess-input-wrap">✅ خمّنت صح! بننتظر الباقي أو انتهاء الوقت</div>`
+        : `<div class="guess-send-row" id="guess-input-wrap"><input id="guess-input" placeholder="اكتب تخمينك هون…" maxlength="40" autocomplete="off"><button class="btn btn-primary btn-sm" id="guess-send-btn">إرسال</button></div>`)}
 
-    <div class="section-title" style="width:100%;">شو عم يكتبوا الكل الآن 👀</div>
-    <div class="live-guess-list" id="live-guess-list" style="width:100%;"></div>
+    <div class="section-title" style="width:100%;">التخمينات 👀</div>
+    <div class="guess-log-list" id="guess-log-list" style="width:100%;"></div>
   </div></div>`;
 
-  updateLiveGuessPanel(round);
+  _drawGuessLog = [];
+  renderGuessLogPanel();
   startRingCountdown(total, remaining, ()=>{});
 
   const canvas = document.getElementById('draw-canvas');
@@ -3247,19 +3233,23 @@ function renderDrawPhase(round){
   clearRef.on('value', onClear);
   state.drawListeners.push([clearRef, 'value', onClear]);
 
-  // مستمعان مخصّصان يحدّثان لوحة "شو الكل قاعد يكتب" بس (مسارين ضيّقين تحديداً) —
-  // نتجنّب الاستماع لكامل عقدة "round" لأنها تشمل "strokes" اللي بتتحدث عشرات المرات
-  // بالثانية أثناء الرسم، وكانت تسبب إعادة بناء اللوحة بمعدل جنوني وتُعلّق المتصفح
-  const liveGuessesRef = db.ref(`rooms/${state.roomCode}/round/liveGuesses`);
-  const onLiveGuessesChange = snap=>{
-    updateLiveGuessPanel(Object.assign({}, state.room.round, {liveGuesses: snap.val()||{}}));
+  // مستمعان مخصّصان لسجل التخمينات ومين خمّن صح — مسارين ضيّقين تحديداً، بعيدين عن "strokes"
+  // (كانت لعبة الاستماع لكامل عقدة "round" تشمل خطوط الرسم اللي بتتحدث عشرات المرات بالثانية، وتُعلّق المتصفح)
+  const guessesRef = db.ref(`rooms/${state.roomCode}/round/drawGuesses`);
+  const onNewGuess = snap=>{
+    const g = snap.val();
+    if(!g) return;
+    _drawGuessLog.push(g);
+    renderGuessLogPanel();
+    if(isDrawer) checkAndMarkGuess(g.uid, g.text);
   };
-  liveGuessesRef.on('value', onLiveGuessesChange);
-  state.drawListeners.push([liveGuessesRef, 'value', onLiveGuessesChange]);
+  guessesRef.on('child_added', onNewGuess);
+  state.drawListeners.push([guessesRef, 'child_added', onNewGuess]);
 
   const correctGuessersRef = db.ref(`rooms/${state.roomCode}/round/correctGuessers`);
   const onCorrectGuessersChange = snap=>{
-    updateLiveGuessPanel(Object.assign({}, state.room.round, {correctGuessers: snap.val()||{}}));
+    if(state.room.round) state.room.round.correctGuessers = snap.val()||{};
+    renderGuessLogPanel();
   };
   correctGuessersRef.on('value', onCorrectGuessersChange);
   state.drawListeners.push([correctGuessersRef, 'value', onCorrectGuessersChange]);
@@ -3319,7 +3309,14 @@ function renderDrawPhase(round){
     });
   } else if(!iAmCorrect){
     const guessInput = document.getElementById('guess-input');
-    if(guessInput) guessInput.addEventListener('input', ()=> submitLiveGuess(guessInput.value));
+    const sendBtn = document.getElementById('guess-send-btn');
+    const doSend = ()=>{
+      if(!guessInput || !guessInput.value.trim()) return;
+      submitDrawGuess(guessInput.value);
+      guessInput.value = '';
+    };
+    if(sendBtn) sendBtn.onclick = doSend;
+    if(guessInput) guessInput.addEventListener('keydown', e=>{ if(e.key==='Enter') doSend(); });
   }
 }
 

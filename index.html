@@ -383,6 +383,12 @@ input{font-family:var(--font-body);}
   font-family:var(--font-display); font-weight:800; font-size:20px; text-align:center; line-height:1.55;
   background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:22px; width:100%;
 }
+.trivia-media-frame{
+  width:100%; max-width:480px; border-radius:16px; overflow:hidden; background:#0d0a14;
+  border:2px solid rgba(212,160,41,0.35); box-shadow:0 16px 40px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center;
+}
+.trivia-media-frame img{width:100%; max-height:320px; object-fit:contain; display:block;}
+.trivia-media-frame video{width:100%; max-height:320px; display:block;}
 .team-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:100px; font-size:12px; font-weight:800;}
 .team-badge.A{background:rgba(255,84,112,0.16); color:#ff8fa3;}
 .team-badge.B{background:rgba(58,161,222,0.16); color:#7ec8f0;}
@@ -3773,8 +3779,8 @@ function renderTriviaLocalQuestion(){
         <div class="trivia-qcard-eyebrow">${teamLabel} — ${escapeHTML(cell.category)} — ${cell.points} نقطة</div>
         ${timerRingHTML()}
         <div class="trivia-question">${escapeHTML(q.question)}</div>
-        ${q.mediaType==="image" && q.mediaUrl ? `<img src="${escapeHTML(q.mediaUrl)}" style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;" alt="">` : ''}
-        ${q.mediaType==="video" && q.mediaUrl ? `<video src="${escapeHTML(q.mediaUrl)}" controls style="width:100%; max-width:360px; border-radius:14px; margin:4px 0;"></video>` : ''}
+        ${q.mediaType==="image" && q.mediaUrl ? `<div class="trivia-media-frame"><img src="${escapeHTML(q.mediaUrl)}" alt=""></div>` : ''}
+        ${q.mediaType==="video" && q.mediaUrl ? `<div class="trivia-media-frame"><video src="${escapeHTML(q.mediaUrl)}" controls autoplay muted playsinline></video></div>` : ''}
         ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
 
         ${!t.revealed

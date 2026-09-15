@@ -298,6 +298,12 @@ async function renderDashboard(){
         <button class="btn btn-secondary btn-sm" id="add-cat-image">+ إضافة صورة الفئة</button>
       </div>
       <div class="card">
+        <div class="section-title">🏳️ فئة "أعلام" جاهزة</div>
+        <p class="hint">بضغطة وحدة، تضيف فئة "أعلام" كاملة (48 دولة) بأسئلة جاهزة — كل سؤال فيه علم رسمي واضح للدولة (من خدمة flagcdn.com المجانية)، وإجابته اسم الدولة. ما بتحتاج ترفع أي صورة يدوياً.</p>
+        <div id="flags-status"></div>
+        <button class="btn btn-primary btn-sm" id="generate-flags-btn">🌍 إضافة فئة الأعلام (48 سؤال)</button>
+      </div>
+      <div class="card">
         <div class="section-title">❓ بنك الأسئلة (لوحة فئات × نقاط)</div>
         <p class="hint">نفس نظام سين ميم الأصلي: كل سؤال له فئة وعدد نقاط. عند بدء اللعبة، تُبنى لوحة تلقائياً من فئاتك (حتى 6 فئات، كل فئة تعرض قيم النقاط المتوفرة فيها). أضف عدة أسئلة بنفس الفئة وقيم نقاط مختلفة (100 إلى 600) عشان اللوحة تطلع كاملة. رفع الصور والفيديوهات يستخدم نفس إعداد الرفع (Cloudinary) الموجود بتبويب "الكراسي الموسيقية" — لازم يكون معبّى هناك أولاً.</p>
         <div id="trivia-questions-list">جارِ التحميل…</div>
@@ -405,6 +411,7 @@ async function renderDashboard(){
   wireSongBank();
   await loadChairsSongs();
   wireTriviaQuestionForm();
+  wireFlagsGenerator();
   await loadTriviaQuestions();
   wireTriviaCategoryImageForm();
   await loadTriviaCategoryImages();
@@ -520,6 +527,46 @@ function startEditTriviaQuestion(key){
   addBtn.dataset.editKey = key;
   addBtn.dataset.editMediaUrl = q.mediaUrl || '';
   document.getElementById('tq-category').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+/* ---- توليد فئة "أعلام" تلقائياً باستخدام خدمة flagcdn.com المجانية (روابط صور مباشرة، بدون مفتاح API) ---- */
+const FLAG_COUNTRIES = [
+  ["sa","السعودية"],["eg","مصر"],["ae","الإمارات"],["jo","الأردن"],["ps","فلسطين"],["lb","لبنان"],
+  ["sy","سوريا"],["iq","العراق"],["kw","الكويت"],["qa","قطر"],["bh","البحرين"],["om","عمان"],
+  ["ye","اليمن"],["ma","المغرب"],["dz","الجزائر"],["tn","تونس"],["ly","ليبيا"],["sd","السودان"],
+  ["tr","تركيا"],["ir","إيران"],["us","الولايات المتحدة"],["ca","كندا"],["mx","المكسيك"],["br","البرازيل"],
+  ["ar","الأرجنتين"],["gb","بريطانيا"],["fr","فرنسا"],["de","ألمانيا"],["it","إيطاليا"],["es","إسبانيا"],
+  ["pt","البرتغال"],["nl","هولندا"],["be","بلجيكا"],["ch","سويسرا"],["se","السويد"],["no","النرويج"],
+  ["ru","روسيا"],["cn","الصين"],["jp","اليابان"],["kr","كوريا الجنوبية"],["in","الهند"],["pk","باكستان"],
+  ["id","إندونيسيا"],["my","ماليزيا"],["au","أستراليا"],["nz","نيوزيلندا"],["za","جنوب أفريقيا"],["ng","نيجيريا"],["ke","كينيا"]
+];
+
+function wireFlagsGenerator(){
+  const btn = document.getElementById('generate-flags-btn');
+  if(!btn) return;
+  btn.onclick = async ()=>{
+    if(!confirm(`رح تُضاف ${FLAG_COUNTRIES.length} سؤال جديد لفئة "أعلام". إذا ضغطت الزر قبل كذا، رح ينضاف تكرار — تابع؟`)) return;
+    btn.disabled = true;
+    const statusEl = document.getElementById('flags-status');
+    if(statusEl) statusEl.textContent = "جارِ الإضافة…";
+    const points = [100,300,600];
+    const updates = {};
+    FLAG_COUNTRIES.forEach(([code,name],i)=>{
+      const key = db.ref('gameData/triviaQuestions').push().key;
+      updates[key] = {
+        category:"أعلام",
+        points: points[i%3],
+        question:"شو هاي الدولة؟",
+        answer:name,
+        mediaType:"image",
+        mediaUrl:`https://flagcdn.com/w320/${code}.png`
+      };
+    });
+    await db.ref('gameData/triviaQuestions').update(updates);
+    if(statusEl) statusEl.textContent = `تمت إضافة ${FLAG_COUNTRIES.length} سؤال ✅`;
+    btn.disabled = false;
+    loadTriviaQuestions();
+  };
 }
 
 function wireTriviaQuestionForm(){

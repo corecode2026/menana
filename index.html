@@ -3138,7 +3138,7 @@ function renderGuessResult(round){
 
 /* ---- خمن: شاشة الرسم الحيّة ---- */
 /* يحدّث لوحة "شو الكل قاعد يكتب" مباشرة بدون إعادة رسم كامل الشاشة — كي ما تنمسح لوحة الرسم */
-let _drawGuessLog = []; // سجل محلي بالتخمينات المُرسَلة لهاي الجولة (يُبنى تراكمياً من child_added)
+let _drawLatestGuessByUid = {}; // آخر تخمين أرسله كل لاعب لهاي الجولة (uid → نص)
 
 function renderGuessLogPanel(){
   const container = document.getElementById('guess-log-list');
@@ -3146,16 +3146,17 @@ function renderGuessLogPanel(){
   const round = state.room.round || {};
   const correctGuessers = round.correctGuessers||{};
   const players = state.room.players;
-  container.innerHTML = _drawGuessLog.map(g=>{
-    const isCorrectNow = correctGuessers[g.uid]!==undefined;
-    const name = players[g.uid] ? players[g.uid].name : '';
+  const others = (round.drawOrder||[]).filter(uid=>uid!==round.drawerUid && players[uid] && players[uid].online!==false);
+
+  container.innerHTML = others.map(uid=>{
+    const isCorrectNow = correctGuessers[uid]!==undefined;
+    const latest = _drawLatestGuessByUid[uid];
     return `
       <div class="guess-log-row ${isCorrectNow?'correct':''}">
-        <span class="guess-log-name">${escapeHTML(name)}</span>
-        <span class="guess-log-text">${isCorrectNow ? '✅ خمّن صح!' : escapeHTML(g.text)}</span>
+        <span class="guess-log-name">${escapeHTML(players[uid].name)}</span>
+        <span class="guess-log-text">${isCorrectNow ? '✅ خمّن صح!' : (latest?escapeHTML(latest):'…')}</span>
       </div>`;
   }).join('') || `<div class="hint-row" style="justify-content:center;">${svgIcon('info')}لسا محدا خمّن...</div>`;
-  container.scrollTop = container.scrollHeight;
 
   if(state.uid!==round.drawerUid){
     const iAmCorrect = correctGuessers[state.uid]!==undefined;
@@ -3198,7 +3199,7 @@ function renderDrawPhase(round){
     <div class="guess-log-list" id="guess-log-list" style="width:100%;"></div>
   </div></div>`;
 
-  _drawGuessLog = [];
+  _drawLatestGuessByUid = {};
   renderGuessLogPanel();
   startRingCountdown(total, remaining, ()=>{});
 
@@ -3239,7 +3240,7 @@ function renderDrawPhase(round){
   const onNewGuess = snap=>{
     const g = snap.val();
     if(!g) return;
-    _drawGuessLog.push(g);
+    _drawLatestGuessByUid[g.uid] = g.text;
     renderGuessLogPanel();
     if(isDrawer) checkAndMarkGuess(g.uid, g.text);
   };

@@ -389,6 +389,7 @@ input{font-family:var(--font-body);}
 }
 .trivia-media-frame img{width:100%; max-height:320px; object-fit:contain; display:block;}
 .trivia-media-frame video{width:100%; max-height:320px; display:block;}
+.video-control-row{display:flex; gap:8px; width:100%; justify-content:center;}
 .team-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:100px; font-size:12px; font-weight:800;}
 .team-badge.A{background:rgba(255,84,112,0.16); color:#ff8fa3;}
 .team-badge.B{background:rgba(58,161,222,0.16); color:#7ec8f0;}
@@ -3780,7 +3781,13 @@ function renderTriviaLocalQuestion(){
         ${timerRingHTML()}
         <div class="trivia-question">${escapeHTML(q.question)}</div>
         ${q.mediaType==="image" && q.mediaUrl ? `<div class="trivia-media-frame"><img src="${escapeHTML(q.mediaUrl)}" alt=""></div>` : ''}
-        ${q.mediaType==="video" && q.mediaUrl ? `<div class="trivia-media-frame"><video src="${escapeHTML(q.mediaUrl)}" controls autoplay muted playsinline></video></div>` : ''}
+        ${q.mediaType==="video" && q.mediaUrl ? `
+          <div class="trivia-media-frame"><video id="trivia-video" src="${escapeHTML(q.mediaUrl)}" controls playsinline></video></div>
+          <div class="video-control-row">
+            <button class="btn btn-secondary btn-sm" id="video-fullscreen-btn">🔍 تكبير الشاشة</button>
+            <button class="btn btn-secondary btn-sm" id="video-replay-btn">🔁 إعادة التشغيل</button>
+          </div>
+        ` : ''}
         ${t.revealed ? `<div class="trivia-answer-reveal">✅ ${escapeHTML(q.answer||'')}</div>` : ''}
 
         ${!t.revealed
@@ -3805,6 +3812,16 @@ function renderTriviaLocalQuestion(){
   const awardA = document.getElementById('award-A'); if(awardA) awardA.onclick = ()=> awardTriviaCell('A');
   const awardB = document.getElementById('award-B'); if(awardB) awardB.onclick = ()=> awardTriviaCell('B');
   const awardNone = document.getElementById('award-none'); if(awardNone) awardNone.onclick = ()=> awardTriviaCell(null);
+
+  const videoEl = document.getElementById('trivia-video');
+  const fsBtn = document.getElementById('video-fullscreen-btn');
+  if(fsBtn && videoEl) fsBtn.onclick = ()=>{
+    if(videoEl.requestFullscreen) videoEl.requestFullscreen();
+    else if(videoEl.webkitEnterFullscreen) videoEl.webkitEnterFullscreen(); // سفاري بالموبايل
+  };
+  const replayBtn = document.getElementById('video-replay-btn');
+  if(replayBtn && videoEl) replayBtn.onclick = ()=>{ videoEl.currentTime = 0; videoEl.play(); };
+
   document.getElementById('back-to-board').onclick = ()=>{
     t.currentCell = null; t.currentQuestion = null; t.revealed = false;
     renderTriviaLocalBoard();
